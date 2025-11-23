@@ -7,6 +7,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	parameter nY = 9;
 	parameter A = 2'b00, B = 2'b01, C = 2'b10, D = 2'b11;
 
+
 	// Port Declarations
 	input CLOCK_50;
 	input [9:0] SW;
