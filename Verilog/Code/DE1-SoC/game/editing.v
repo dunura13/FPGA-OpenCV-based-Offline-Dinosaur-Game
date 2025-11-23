@@ -8,6 +8,8 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	parameter A = 2'b00, B = 2'b01, C = 2'b10, D = 2'b11;
 
 	// Port Declarations
+
+    
 	input CLOCK_50;
 	input [9:0] SW;
 	input [3:0] KEY;
@@ -248,7 +250,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
         .sprite_select(current_obs_type) 
 	);
 
-    
+
 	defparam OBS.nX = nX;
 	defparam OBS.nY = nY;
 	defparam OBS.XSCREEN = 640;
