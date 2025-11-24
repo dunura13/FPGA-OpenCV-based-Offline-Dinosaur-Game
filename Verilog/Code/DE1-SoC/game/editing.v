@@ -206,7 +206,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	defparam OBS.HAS_SPRITE = 1;
 	defparam OBS.INIT_FILE = "./MIF/obstacle_sprite.mif";
 	defparam OBS.X_INIT = 9'd320;    // Changed from 10'd640 (halved)
-	defparam OBS.Y_INIT = 8'd114;    // Changed from 9'd269 (approximately halved)
+	defparam OBS.Y_INIT = 8'd109;    // Changed from 9'd269 (approximately halved)
 	defparam OBS.KK = 19;
 
 	// VGA controller with dynamic background
