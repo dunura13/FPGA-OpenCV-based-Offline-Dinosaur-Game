@@ -767,6 +767,7 @@ endmodule
 
 // Universal object module - CORRECTED VERSION
 // Universal object module - UPDATED WITH PROGRESSIVE SPEED CONTROL
+// Universal object module - UPDATED WITH PROGRESSIVE SPEED CONTROL
 module object (
     input Resetn, Clock, gnt, sel, 
     input jump_trigger, duck_trigger,
@@ -840,21 +841,25 @@ module object (
     // *** MODIFIED: Progressive speed control for obstacles ***
     wire [KK-1:0] speed_threshold;
     wire [7:0] capped_speed_level;
+    wire [7:0] speed_level_scaled;
     
-    // Cap speed_level at 10 (adjustable for desired max speed)
-    localparam MAX_SPEED_LEVEL = 8'd10;
+    // Cap speed_level at 50 (much higher cap since increment is tiny)
+    localparam MAX_SPEED_LEVEL = 8'd50;
     assign capped_speed_level = (speed_level > MAX_SPEED_LEVEL) ? MAX_SPEED_LEVEL : speed_level;
     
+    // Scale down the speed level to get very gradual increase
+    // Divide by 10 to make speed increase 10x slower
+    assign speed_level_scaled = capped_speed_level / 10;
+    
     // Calculate dynamic threshold based on speed level
-    // Higher speed_level = lower threshold = faster movement
-    // Base threshold is (2^KK - 1), we reduce it based on speed_level
-    // Formula: threshold = base - (base * speed_level / 32)
-    // This gives gradual speed increase
+    // MUCH smaller speed increment - only about 0.02% per level
+    // Base threshold is (2^KK - 1), we reduce it VERY slightly
     localparam [KK-1:0] BASE_THRESHOLD = (1 << KK) - 1;
     
-    // For MODE 0 (obstacles), use progressive speed. For others, use fixed speed.
+    // For MODE 0 (obstacles), use progressive speed with TINY increments
+    // Using >> 15 instead of >> 5 makes it 1024x slower (2^10 = 1024)
     assign speed_threshold = (MODE == 0) ? 
-                            (BASE_THRESHOLD - (BASE_THRESHOLD >> 5) * capped_speed_level) : 
+                            (BASE_THRESHOLD - ((BASE_THRESHOLD >> 15) * speed_level_scaled)) : 
                             BASE_THRESHOLD;
     
     // Modified sync_adjusted to use dynamic threshold for obstacles
