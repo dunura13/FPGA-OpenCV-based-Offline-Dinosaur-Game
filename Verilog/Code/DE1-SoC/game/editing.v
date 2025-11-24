@@ -793,7 +793,7 @@ module Up_count (Clock, Resetn, Q);
 			Q <= Q + 1'b1;
 endmodule
 
-// Universal object module - UPDATED WITH GAME START AND GAMEOVER CONTROL
+// Universal object module - UPDATED WITH UNSIGNED JUMP PHYSICS
 module object (
     input Resetn, Clock, gnt, sel, 
     input jump_trigger, duck_trigger,
@@ -814,11 +814,15 @@ module object (
 );
 
 	parameter KK = 19;
-	localparam signed [9:0] GRAVITY = 10'sd1;
-	localparam signed [9:0] JUMP_FORCE = -10'sd10;
-	localparam signed [9:0] GROUND_Y = 10'd109;
+	
+	// *** CHANGED: Unsigned constants ***
+	localparam [9:0] GRAVITY = 10'd1;
+	localparam [9:0] JUMP_FORCE = 10'd10;
+	localparam [9:0] GROUND_Y = 10'd109;
 
-	reg signed [9:0] velocity_y;
+	// *** CHANGED: Unsigned velocity with separate sign flag ***
+	reg [9:0] velocity_y;
+	reg velocity_is_negative;
 
     parameter nX = 9;
     parameter nY = 8;
@@ -887,9 +891,6 @@ module object (
 
     wire [5:0] anim_threshold;
     assign anim_threshold = (speed_level > 15) ? 6'd8 : (20 - speed_level);
-
-	wire signed [10:0] current_y_signed = $signed({1'b0, Y_reg});
-	wire signed [10:0] next_y_signed = current_y_signed + velocity_y;
 
     generate
         if (HAS_SPRITE && MODE == 1) begin : GEN_PLAYER_SPRITES
@@ -985,7 +986,7 @@ module object (
         end
     end
 
-    // *** MODIFIED: Jump/animation logic ***
+    // *** MODIFIED: Jump/animation logic with UNSIGNED arithmetic ***
     always @(posedge Clock) begin
         if (!Resetn) begin
             Jump_Q <= Running;
@@ -993,6 +994,7 @@ module object (
             duck_timer <= 0;
             if (MODE != 0) Y_reg <= Y_INIT;
             velocity_y <= 0;
+            velocity_is_negative <= 0;  // *** NEW ***
             anim_tick <= 0;
             run_frame <= 0;
             gameover_drawn <= 0;
@@ -1027,26 +1029,54 @@ module object (
                  end
             end
 
+            // *** CHANGED: Jump trigger with unsigned velocity ***
             if (jump_trigger && !is_ducking && Jump_Q == Running && game_active) begin
                 velocity_y <= JUMP_FORCE;
+                velocity_is_negative <= 1'b1;  // Going up (negative direction)
                 Jump_Q <= Ascending;
             end
             
+            // *** CHANGED: Physics update with unsigned arithmetic ***
             else if (MODE == 1 && sync_adjusted) begin
                 if (Jump_Q != Running) begin
-                    velocity_y <= velocity_y + GRAVITY;
+                    // Apply gravity
+                    if (velocity_is_negative) begin
+                        // Moving upward, gravity slows us down
+                        if (velocity_y > GRAVITY) begin
+                            velocity_y <= velocity_y - GRAVITY;
+                        end else begin
+                            // Flip to positive (descending)
+                            velocity_y <= GRAVITY - velocity_y;
+                            velocity_is_negative <= 1'b0;
+                        end
+                    end else begin
+                        // Moving downward, gravity speeds us up
+                        velocity_y <= velocity_y + GRAVITY;
+                    end
                     
-                    if (next_y_signed >= $signed({1'b0, GROUND_Y})) begin
-    					Y_reg <= GROUND_Y;
-						velocity_y <= 0;
-						Jump_Q <= Running;
-					end else begin
-						Y_reg <= next_y_signed[nY-1:0];
-					end
-                end 
-                else begin
-                    Y_reg <= GROUND_Y;
-                    velocity_y <= 0;
+                    // Update position based on velocity direction
+                    if (velocity_is_negative) begin
+                        // Moving up - check upper bounds
+                        if (velocity_y > Y_reg) begin
+                            Y_reg <= 8'd0;  // Clamp to top of screen
+                        end else begin
+                            Y_reg <= Y_reg - velocity_y[nY-1:0];
+                        end
+                    end else begin
+                        // Moving down - check ground collision
+                        if (Y_reg + velocity_y[nY-1:0] >= GROUND_Y[nY-1:0]) begin
+                            Y_reg <= GROUND_Y[nY-1:0];
+                            velocity_y <= 10'd0;
+                            velocity_is_negative <= 1'b0;
+                            Jump_Q <= Running;
+                        end else begin
+                            Y_reg <= Y_reg + velocity_y[nY-1:0];
+                        end
+                    end
+                end else begin
+                    Y_reg <= GROUND_Y[nY-1:0];
+                    velocity_y <= 10'd0;
+                    velocity_is_negative <= 1'b0;
                 end
             end
 
