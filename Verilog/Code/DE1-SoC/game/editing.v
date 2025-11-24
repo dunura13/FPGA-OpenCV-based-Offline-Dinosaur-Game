@@ -797,6 +797,7 @@ module object (
 
     reg [3:0] draw_Q, draw_D;
     reg [1:0] Jump_Q;
+	reg Lx, Ly, Lxc, Lyc, Exc, Eyc, erase, write;
     parameter Running = 2'b00, Ascending = 2'b01, Descending = 2'b10;
 
     reg is_ducking;
