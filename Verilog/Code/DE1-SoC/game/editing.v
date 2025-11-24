@@ -548,19 +548,7 @@ module object (
 	wire signed [10:0] current_y_signed = $signed({1'b0, Y_reg});
 	wire signed [10:0] next_y_signed = current_y_signed + velocity_y;
 	
-    always @(posedge Clock) begin
-        if (!Resetn) begin
-            anim_tick <= 0;
-            run_frame <= 0;
-        end else if (sync_adjusted) begin
-            if (anim_tick >= anim_threshold) begin
-                anim_tick <= 0;
-                run_frame <= run_frame + 1;
-            end else begin
-                anim_tick <= anim_tick + 1;
-            end
-        end
-    end
+
 
     generate
         if (HAS_SPRITE && MODE == 1) begin : GEN_PLAYER_SPRITES
