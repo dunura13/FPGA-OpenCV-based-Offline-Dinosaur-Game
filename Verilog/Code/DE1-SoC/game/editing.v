@@ -9,8 +9,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	 * - Exactly 128x64 pixels (8,192 total pixels = 2^13, perfect power of 2!)
 	 * - 9-bit color format (3 bits R, 3 bits G, 3 bits B)
 	 * - Stored LINEARLY (address = row * 128 + col)
-	 * - Black pixels (9'b000000000 or 0) are treated as TRANSPARENT
-	 * - All other colors (including white) will be drawn
+	 * - NO TRANSPARENCY - all pixels are drawn exactly as they are
 	 * 
 	 * Required MIF format:
 	 * DEPTH = 8192;      <-- Exactly 128 * 64 = 8192
@@ -19,13 +18,10 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	 * DATA_RADIX = BIN;
 	 * CONTENT
 	 * BEGIN
-	 * 0 : <pixel data>;      -- Row 0, Col 0
-	 * 1 : <pixel data>;      -- Row 0, Col 1
+	 * 0 : <any color>;       -- All colors are drawn (no transparency)
+	 * 1 : <any color>;
 	 * ...
-	 * 127 : <pixel data>;    -- Row 0, Col 127 (end of first row)
-	 * 128 : <pixel data>;    -- Row 1, Col 0
-	 * ...
-	 * 8191 : <pixel data>;   -- Row 63, Col 127 (last pixel)
+	 * 8191 : <any color>;    -- Last pixel
 	 * END;
 	 * 
 	 * Address calculation: address = row * 128 + col
@@ -1052,13 +1048,11 @@ module object (
     
     wire [8:0] transparent_color;
     
-    // Logic: 
-    // MODE 1 (Dino) + Ducking: transparent = BLACK (0)
-    // MODE 2 (Gameover): transparent = BLACK (0) - so black background is transparent
+    // Transparency Logic: 
+    // MODE 1 (Dino) + Ducking: transparent = BLACK (0) - for ducking sprite
+    // MODE 2 (Gameover): NO TRANSPARENCY - all pixels drawn
     // MODE 0 (Obstacle) or MODE 1 (Dino) not ducking: transparent = WHITE (all 1s)
-    assign transparent_color = (MODE == 1 && is_ducking) ? 9'd0 : 
-                               (MODE == 2) ? 9'd0 : 
-                               9'b111111111;
+    assign transparent_color = (MODE == 1 && is_ducking) ? 9'd0 : 9'b111111111;
 
     // For MODE 2, only write pixels within actual image bounds (128x64)
     wire within_gameover_bounds;
@@ -1066,8 +1060,12 @@ module object (
                                    (XC < GAMEOVER_WIDTH && YC < GAMEOVER_HEIGHT) : 
                                    1'b1;  // Always true for other modes
 
-    // Use this dynamic color for the check, AND check bounds for MODE 2
-    assign VGA_write = write & within_gameover_bounds & (erase || (final_pixel_out != transparent_color));
+    // VGA_write logic:
+    // MODE 2: Write ALL pixels within bounds (no transparency check)
+    // Other modes: Use transparency check
+    assign VGA_write = (MODE == 2) ? 
+                      (write & within_gameover_bounds) :
+                      (write & (erase || (final_pixel_out != transparent_color)));
 
     assign BASE_X = X_reg;
     assign BASE_Y = Y_reg;
