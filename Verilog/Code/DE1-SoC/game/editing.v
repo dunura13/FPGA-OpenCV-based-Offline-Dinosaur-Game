@@ -469,28 +469,56 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 
 	defparam VGA.BACKGROUND_IMAGE ="./MIF/bmp_320_9.mif";
 
-	// --- DINO HITBOX (20x30 inside a 32x32 image) ---
-    localparam HB_W = 9'd20;         
-    localparam HB_H = 8'd30;         
-    localparam HB_X_OFS = 9'd6;      
-    localparam HB_Y_OFS = 8'd2;      
+	// --- UPDATED HITBOX CONFIGURATION ---
+    
+    // Dino Constants (32x32 Sprite)
+    localparam DINO_W = 9'd20;        // Width of the body
+    localparam DINO_X_OFS = 9'd6;     // Center the hitbox horizontally
+    
+    // Obstacle Constants (16x16 Sprite)
+    localparam OBS_W = 9'd16;
+    localparam OBS_H = 8'd16;
+    localparam OBS_X_OFS = 9'd0;
+    localparam OBS_Y_OFS = 8'd0;
 
-    // --- OBSTACLE HITBOX (16x16 inside a 16x16 image) ---
-    localparam HB_W_OBS = 9'd16;     
-    localparam HB_H_OBS = 8'd16;     
-    localparam HB_X_OFS_OBS = 9'd0;  
-    localparam HB_Y_OFS_OBS = 8'd0;
+    // Dynamic Hitbox Variables
+    wire [7:0] dino_top_offset;
+    wire [7:0] dino_height;
 
-	wire [7:0] current_dino_h;
-    assign current_dino_h = (duck_combined) ? 8'd15 : 8'd30;
+    // LOGIC FIX: 
+    // When ducking, the top of the head moves DOWN (positive Y direction).
+    // Standing: Top offset is small (2px from top). Height is tall (28px).
+    // Ducking:  Top offset is large (16px from top). Height is short (16px).
+    assign dino_top_offset = (duck_combined) ? 8'd16 : 8'd2;
+    assign dino_height     = (duck_combined) ? 8'd16 : 8'd28;
 
-    // 2. Collision Math
-    // We use current_dino_h instead of the static HB_H for the dinosaur
+    // --- COLLISION MATH (AABB) ---
+    // We calculate the four edges of the Dino and the Obstacle.
+    
+    wire [8:0] d_left, d_right;
+    wire [7:0] d_top, d_bottom;
+    wire [8:0] o_left, o_right;
+    wire [7:0] o_top, o_bottom;
+
+    // Dino Boundaries
+    assign d_left   = dino_base_x + DINO_X_OFS;
+    assign d_right  = dino_base_x + DINO_X_OFS + DINO_W;
+    assign d_top    = dino_base_y + dino_top_offset;      // Dynamic Top!
+    assign d_bottom = dino_base_y + dino_top_offset + dino_height;
+
+    // Obstacle Boundaries
+    assign o_left   = obstacle_base_x + OBS_X_OFS;
+    assign o_right  = obstacle_base_x + OBS_X_OFS + OBS_W;
+    assign o_top    = obstacle_base_y + OBS_Y_OFS;
+    assign o_bottom = obstacle_base_y + OBS_Y_OFS + OBS_H;
+
+    // Collision occurs if ALL axes overlap
+    // The specific fix for your issue is (d_top <= o_bottom)
     assign collision = (
-        (dino_base_x + HB_X_OFS + HB_W  >= obstacle_base_x + HB_X_OFS_OBS) &&
-        (dino_base_x + HB_X_OFS         <= obstacle_base_x + HB_X_OFS_OBS + HB_W_OBS) &&
-        (dino_base_y + HB_Y_OFS + current_dino_h >= obstacle_base_y + HB_Y_OFS_OBS) &&
-        (dino_base_y + HB_Y_OFS <= obstacle_base_y + HB_Y_OFS_OBS + HB_H_OBS)
+        (d_right >= o_left) &&    // Dino Right passes Obs Left
+        (d_left <= o_right) &&    // Dino Left hasn't passed Obs Right
+        (d_bottom >= o_top) &&    // Dino Bottom is below Obs Top
+        (d_top <= o_bottom)       // Dino Top is above Obs Bottom
     );
 
 
