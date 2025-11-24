@@ -84,6 +84,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	wire [15:0] high_score;
 	wire respawn_obstacle;
 	wire [7:0] speed_level;
+	wire duck_trigger_key;
 
 	assign Resetn = KEY[0];
 	sync S1 (~KEY[1], Resetn, CLOCK_50, jump_trigger_key);
@@ -135,10 +136,10 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 
 	// Determine which gameover image to show based on score
 	wire show_gameover1, show_gameover2, show_gameover3, show_gameover4;
-	assign show_gameover1 = collision_latched && (score < 16'd10);
-	assign show_gameover2 = collision_latched && (score >= 16'd10 && score < 16'd15);
-	assign show_gameover3 = collision_latched && (score >= 16'd15 && score < 16'd20);
-	assign show_gameover4 = collision_latched && (score >= 16'd20);
+	assign show_gameover1 = collision_latched && (score < 16'd3);
+	assign show_gameover2 = collision_latched && (score >= 16'd3 && score < 16'd6);
+	assign show_gameover3 = collision_latched && (score >= 16'd6 && score < 16'd7);
+	assign show_gameover4 = collision_latched && (score >= 16'd8);
 
 	// FSM for arbitration between dinosaur and obstacle drawing
 	always @ (*)
@@ -290,8 +291,8 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	defparam OBS.XSCREEN = 320;      // Changed from 640
 	defparam OBS.YSCREEN = 240;      // Changed from 480
 	defparam OBS.MODE = 0;
-	defparam OBS.xOBJ = 5;
-	defparam OBS.yOBJ = 5;
+	defparam OBS.xOBJ = 4;
+	defparam OBS.yOBJ = 4;
 	defparam OBS.HAS_SPRITE = 1;
 	defparam OBS.INIT_FILE = "./MIF/leetcodeObstacle.mif";
 	defparam OBS.X_INIT = 9'd320;    // Changed from 10'd640 (halved)
@@ -468,11 +469,17 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 
 	defparam VGA.BACKGROUND_IMAGE ="./MIF/bmp_320_9.mif";
 
-	// UPDATED HITBOX PARAMETERS FOR 320x240
-	localparam HB_W = 9'd20;         // Changed from 10'd20 to 9'd20
-	localparam HB_H = 8'd30;         // Changed from 9'd30 to 8'd30
-	localparam HB_X_OFS = 9'd0;      // Changed from 10'd0 to 9'd0
-	localparam HB_Y_OFS = 8'd0;      // Changed from 9'd0 to 8'd0
+	// --- DINO HITBOX (20x30 inside a 32x32 image) ---
+    localparam HB_W = 9'd20;         
+    localparam HB_H = 8'd30;         
+    localparam HB_X_OFS = 9'd6;      
+    localparam HB_Y_OFS = 8'd2;      
+
+    // --- OBSTACLE HITBOX (16x16 inside a 16x16 image) ---
+    localparam HB_W_OBS = 9'd16;     
+    localparam HB_H_OBS = 8'd16;     
+    localparam HB_X_OFS_OBS = 9'd0;  
+    localparam HB_Y_OFS_OBS = 8'd0;
 
 	wire [7:0] current_dino_h;
     assign current_dino_h = (duck_combined) ? 8'd15 : 8'd30;
@@ -480,18 +487,10 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
     // 2. Collision Math
     // We use current_dino_h instead of the static HB_H for the dinosaur
     assign collision = (
-        // X-Axis Overlap (Width is constant)
-        (dino_base_x + HB_X_OFS + HB_W  >= obstacle_base_x + HB_X_OFS) &&
-        (dino_base_x + HB_X_OFS         <= obstacle_base_x + HB_X_OFS + HB_W) &&
-        
-        // Y-Axis Overlap (Dino Height is DYNAMIC)
-        // Note: Y increases downwards.
-        // Dino Bottom (Base Y + Height) >= Obs Top (Base Y)
-        (dino_base_y + HB_Y_OFS + current_dino_h >= obstacle_base_y + HB_Y_OFS) &&
-        
-        // Dino Top (Base Y) <= Obs Bottom (Base Y + Obs Height)
-        // Note: Obstacle always uses the full HB_H (30)
-        (dino_base_y + HB_Y_OFS <= obstacle_base_y + HB_Y_OFS + HB_H)
+        (dino_base_x + HB_X_OFS + HB_W  >= obstacle_base_x + HB_X_OFS_OBS) &&
+        (dino_base_x + HB_X_OFS         <= obstacle_base_x + HB_X_OFS_OBS + HB_W_OBS) &&
+        (dino_base_y + HB_Y_OFS + current_dino_h >= obstacle_base_y + HB_Y_OFS_OBS) &&
+        (dino_base_y + HB_Y_OFS <= obstacle_base_y + HB_Y_OFS_OBS + HB_H_OBS)
     );
 
 	collision_latch COL_LATCH (
