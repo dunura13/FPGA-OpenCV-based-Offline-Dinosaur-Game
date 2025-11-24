@@ -1,3 +1,4 @@
+
 module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	VGA_HS, VGA_VS, VGA_BLANK_N, VGA_SYNC_N, VGA_CLK,
 	HEX0, HEX1, HEX2, HEX3, HEX4, HEX5, GPIO_0);
@@ -147,10 +148,10 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 
 	// Determine which gameover image to show based on score
 	wire show_gameover1, show_gameover2, show_gameover3, show_gameover4;
-	assign show_gameover1 = collision_latched && (score < 16'd10);
-	assign show_gameover2 = collision_latched && (score >= 16'd10 && score < 16'd15);
-	assign show_gameover3 = collision_latched && (score >= 16'd15 && score < 16'd20);
-	assign show_gameover4 = collision_latched && (score >= 16'd20);
+	assign show_gameover1 = collision_latched && (score < 16'd4);
+	assign show_gameover2 = collision_latched && (score >= 16'd4 && score < 16'd9);
+	assign show_gameover3 = collision_latched && (score >= 16'd9 && score < 16'd15);
+	assign show_gameover4 = collision_latched && (score >= 16'd15);
 
 	// FSM for arbitration between dinosaur and obstacle drawing
 	always @ (*)
@@ -373,7 +374,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	defparam GAMEOVER1.GAMEOVER_HEIGHT = 64;
 	defparam GAMEOVER1.HAS_SPRITE = 1;
 	defparam GAMEOVER1.STATIONARY = 1;
-	defparam GAMEOVER1.INIT_FILE = "./MIF/gameover1.mif";
+	defparam GAMEOVER1.INIT_FILE = "./MIF/new_game_over.mif";
 	defparam GAMEOVER1.X_INIT = 9'd96;
 	defparam GAMEOVER1.Y_INIT = 8'd88;
 	defparam GAMEOVER1.KK = 19;
