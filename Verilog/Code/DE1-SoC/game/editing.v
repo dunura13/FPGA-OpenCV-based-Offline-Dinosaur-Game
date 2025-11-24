@@ -213,6 +213,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	vga_adapter VGA (
 		.resetn(Resetn),
 		.clock(CLOCK_50),
+		
 		.color(MUX_color),
 		.x(MUX_x),
 		.y(MUX_y),
