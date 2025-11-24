@@ -174,7 +174,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	defparam DINO.X_INIT = 9'd52;    // Changed from 10'd104 (halved)
 	defparam DINO.Y_INIT = 8'd109;   // Changed from 9'd258 (halved)
 	defparam DINO.JUMP_HEIGHT = 8'd60; // Changed from 9'd80 (halved)
-	defparam DINO.KK = 20;
+	defparam DINO.KK = 21;
 
 	// Instantiate obstacle - MODE 0 (Obstacle) - SCALED POSITIONS
 	object OBS (
@@ -761,7 +761,7 @@ module object (
     end
     
     localparam SPRITE_Y_OFFSET = 10; 
-	localparam DUCK_Y_SHIFT = 8;
+	localparam DUCK_Y_SHIFT = 0;
 
     assign VGA_x = ((prev_select) ? X_prev : X_reg) + XC;
     assign VGA_y = ((prev_select) ? Y_prev : Y_reg) + YC 
