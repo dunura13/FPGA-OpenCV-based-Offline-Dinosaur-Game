@@ -792,6 +792,23 @@ module object (
     reg [nY-1:0] Y_reg, Y_prev;
     reg prev_select;
 
+	initial begin
+			X_reg = X_INIT;      // Force X to start at the parameter value (320 or 52)
+			Y_reg = Y_INIT;      // Force Y to start at the parameter value (102 or 109)
+			velocity_y = 0;      // No movement
+			Jump_Q = Running;    // State machine ready
+			is_ducking = 0;
+			draw_Q = 0;          // Drawing state machine ready
+			
+			// Initialize the random offset variables too
+			random_x_offset = 0;
+			spawn_y_input = Y_INIT; // Ensure the input buffer has a valid value
+		end
+		// ---------------------------
+
+    wire [xOBJ-1:0] XC;
+
+
     wire [xOBJ-1:0] XC;
     wire [yOBJ-1:0] YC;
 
