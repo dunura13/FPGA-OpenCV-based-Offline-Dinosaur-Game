@@ -769,6 +769,7 @@ endmodule
 // Universal object module - UPDATED WITH PROGRESSIVE SPEED CONTROL
 // Universal object module - UPDATED WITH PROGRESSIVE SPEED CONTROL
 // Universal object module - UPDATED WITH PROGRESSIVE SPEED CONTROL
+// Universal object module - UPDATED WITH PROGRESSIVE SPEED CONTROL
 module object (
     input Resetn, Clock, gnt, sel, 
     input jump_trigger, duck_trigger,
@@ -842,24 +843,27 @@ module object (
     // *** MODIFIED: Progressive speed control for obstacles ***
     wire [KK-1:0] slow_threshold;
     wire [7:0] capped_speed_level;
+    wire [7:0] effective_speed_level;
     
-    // Cap speed_level at 30 for maximum speed control
-    localparam MAX_SPEED_LEVEL = 8'd30;
+    // Cap speed_level at 100 for maximum speed control
+    localparam MAX_SPEED_LEVEL = 8'd100;
     assign capped_speed_level = (speed_level > MAX_SPEED_LEVEL) ? MAX_SPEED_LEVEL : speed_level;
     
-    // Calculate speed threshold with controlled linear progression
-    // Start at maximum value (slowest) and decrease gradually
-    // Each level reduces threshold by ~500 (out of ~524,000)
-    // This gives about 0.1% speed increase per level
-    // At max level 30, speed is only about 3% faster
+    // Only increase speed every 5 points to make progression much more gradual
+    assign effective_speed_level = capped_speed_level / 5;
+    
+    // Calculate speed threshold with VERY controlled linear progression
+    // Start at maximum value (slowest) and decrease very gradually
+    // Each effective level reduces threshold by only 50 (out of ~524,000)
+    // This gives about 0.01% speed increase per effective level
     localparam [KK-1:0] BASE_THRESHOLD = (1 << KK) - 1;  // About 524,287 for KK=19
-    localparam [KK-1:0] SPEED_INCREMENT = 500;  // Small fixed increment per level
+    localparam [KK-1:0] SPEED_INCREMENT = 50;  // TINY fixed increment per effective level
     
     // Linear formula prevents sudden jumps
     wire [KK-1:0] speed_reduction;
-    assign speed_reduction = (capped_speed_level * SPEED_INCREMENT > BASE_THRESHOLD/2) ? 
-                            BASE_THRESHOLD/2 : 
-                            (capped_speed_level * SPEED_INCREMENT);
+    assign speed_reduction = (effective_speed_level * SPEED_INCREMENT > BASE_THRESHOLD/4) ? 
+                            BASE_THRESHOLD/4 : 
+                            (effective_speed_level * SPEED_INCREMENT);
     
     // For MODE 0 (obstacles), use progressive speed. For others, use fixed speed.
     assign slow_threshold = (MODE == 0) ? 
