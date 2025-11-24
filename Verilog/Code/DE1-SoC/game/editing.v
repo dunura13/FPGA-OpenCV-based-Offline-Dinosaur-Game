@@ -764,7 +764,7 @@ module Up_count (Clock, Resetn, Q);
 			Q <= Q + 1'b1;
 endmodule
 
-// Universal object module - UPDATED FOR 320x240 WITH RANDOM Y POSITION
+// Universal object module - UPDATED FOR 320x240 WITH RANDOM Y POSITION (FIXED)
 module object (
     input Resetn, Clock, gnt, sel, 
     input jump_trigger, duck_trigger,
@@ -957,17 +957,19 @@ module object (
         end
     end
 
-    // *** MODIFIED: Reset draw_complete_mode2 flag on reset ***
+    // *** MODIFIED: Y_reg initialization - only for MODE 1 and MODE 2 ***
     always @(posedge Clock) begin
         if (!Resetn) begin
             Jump_Q <= Running;
             is_ducking <= 0;
             duck_timer <= 0;
-            Y_reg <= Y_INIT;
+            // Only initialize Y_reg for MODE 1 and MODE 2 here
+            // MODE 0 (obstacles) will be initialized in the X/Y position block
+            if (MODE != 0) Y_reg <= Y_INIT;
             velocity_y <= 0;
             anim_tick <= 0;
             run_frame <= 0;
-            draw_complete_mode2 <= 0;  // *** NEW ***
+            draw_complete_mode2 <= 0;
         end else begin
             
             if (duck_trigger && Jump_Q == Running && duck_timer == 0) begin
@@ -1021,11 +1023,11 @@ module object (
         end
     end
 
-    // *** MODIFIED: X and Y position management for obstacles ***
+    // *** MODIFIED: X and Y position management - now handles Y_reg for MODE 0 ***
     always @(posedge Clock) begin
         if (!Resetn) begin
             X_reg <= X_INIT;
-            // Initialize Y position for obstacles
+            // *** CHANGED: Initialize Y position for obstacles (MODE 0) here ***
             if (MODE == 0) Y_reg <= Y_INIT;
         end
         else if (MODE == 0 && !STATIONARY) begin 
