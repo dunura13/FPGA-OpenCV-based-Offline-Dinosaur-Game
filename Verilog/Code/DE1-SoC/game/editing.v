@@ -808,8 +808,6 @@ module object (
 
     wire [xOBJ-1:0] XC;
 
-
-    wire [xOBJ-1:0] XC;
     wire [yOBJ-1:0] YC;
 
     reg [3:0] draw_Q, draw_D;
