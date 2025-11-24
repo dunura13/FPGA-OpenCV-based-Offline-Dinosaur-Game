@@ -493,7 +493,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
         (dino_base_y + HB_Y_OFS <= obstacle_base_y + HB_Y_OFS_OBS + HB_H_OBS)
     );
 
-	
+
 
 	collision_latch COL_LATCH (
 		.Clock(CLOCK_50),
@@ -985,29 +985,34 @@ module object (
         // If STATIONARY == 1 or MODE == 2, X_reg stays at X_INIT
     end
 
-    // --- GHOST CLEANUP LOGIC ---
-    reg first_frame;
+    // --- IMPROVED GHOST CLEANUP LOGIC ---
+    reg ignore_first_tick;
 
-    // 1. Detect the very first frame after a reset
+    // 1. Control the "Ignore" flag
     always @(posedge Clock) begin
-        if (!Resetn) 
-            first_frame <= 1'b1;
-        else if (sync_adjusted) 
-            first_frame <= 1'b0;
+        if (!Resetn) begin
+            // On Reset, raise the flag: "Don't update history yet!"
+            ignore_first_tick <= 1'b1;
+        end
+        else if (sync_adjusted) begin
+            // On the first tick, this will still be 1. 
+            // We clear it so the NEXT tick works normally.
+            ignore_first_tick <= 1'b0;
+        end
     end
 
     // 2. Smart History Update
     always @(posedge Clock) begin
-        // If Reset is held, DO NOT update X_prev/Y_prev. 
-        // This forces X_prev to hold the "Crash Coordinate" while X_reg resets to Start.
         if (!Resetn) begin
-            // Do nothing. Keep X_prev as is.
+            // Reset held: Keep X_prev at the "Crash Site"
+            // X_reg is resetting to "Start Site" in its own block
         end
-        // On the very first frame after reset, ALSO do not update.
-        // This allows the Erase cycle (D_F) to run using the OLD coords.
-        else if (sync_adjusted && !first_frame) begin
-            X_prev <= X_reg;
-            Y_prev <= Y_reg;
+        else if (sync_adjusted) begin
+            // Only update X_prev if we are NOT in the first tick after reset
+            if (!ignore_first_tick) begin
+                X_prev <= X_reg;
+                Y_prev <= Y_reg;
+            end
         end
     end
 
