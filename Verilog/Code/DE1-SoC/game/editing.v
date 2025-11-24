@@ -47,9 +47,28 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	wire respawn_obstacle;
 	wire [7:0] speed_level;
 
-	assign Resetn = KEY[0];
-	sync S1 (~KEY[1], Resetn, CLOCK_50, jump_trigger_key);
-	sync S2(~KEY[2], Resetn, CLOCK_50, duck_trigger_key);
+	wire duck_trigger_key;
+
+	// --- RESET LOGIC ---
+    reg internal_reset;
+    
+    // Detect if Player Jumps (jump_trigger) while Dead (collision_latched)
+    always @(posedge CLOCK_50) begin
+        // If we are dead and press jump, trigger a brief reset pulse
+        if (collision_latched && jump_trigger) 
+            internal_reset <= 1'b1;
+        else 
+            internal_reset <= 1'b0;
+    end
+
+    // Global Reset triggers if KEY[0] is pressed OR if the soft reset triggers
+    wire GlobalResetn;
+    assign GlobalResetn = KEY[0] && !internal_reset;
+    
+    // Update the LED so we can see reset happening
+    assign LEDR[9] = GlobalResetn;
+	sync S1 (~KEY[1], GlobalResetn, CLOCK_50, jump_trigger_key);
+	sync S2(~KEY[2], GlobalResetn, CLOCK_50, duck_trigger_key);
 
 	// UART "D" command and physical key[2]
 	wire duck_combined;
@@ -61,7 +80,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	wire tick_16x;
 	baud16x #(.CLK_HZ(50_000_000), .BAUD(115200)) U_BAUD16X (
 		.clk (CLOCK_50),
-		.rst_n (Resetn),
+		.rst_n (GlobalResetn),
 		.tick_16x(tick_16x)
 	);
 
@@ -76,7 +95,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 
 	uart_rx_16x #(.CLK_HZ(50_000_000), .BAUD(115200)) U_RX (
 		.clk (CLOCK_50),
-		.rst_n (Resetn),
+		.rst_n (GlobalResetn),
 		.os_tick (tick_16x),
 		.rx_raw (UART_RX),
 		.data_ready(rx_ready),
@@ -85,7 +104,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 
 	uart_cmd_decoder U_DEC (
 		.clk (CLOCK_50),
-		.rst_n (Resetn),
+		.rst_n (GlobalResetn),
 		.rx_strobe (rx_ready),
 		.rx_data (rx_byte),
 		.jump_pulse(jump_pulse),
@@ -95,57 +114,80 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 
 	assign jump_trigger = jump_trigger_key | jump_pulse;
 
-	// FSM for arbitration between dinosaur and obstacle drawing
-	always @ (*)
-	case (y_Q)
-		A: if (req_dino) Y_D = B;
-		else if (req_obstacle) Y_D = C;
-		else Y_D = A;
-		B: if (req_dino) Y_D = B;
-		else Y_D = A;
-		C: if (req_obstacle) Y_D = C;
-		else Y_D = A;
-		default: Y_D = A;
-	endcase
+	// FSM for arbitration - Added State D for GAME OVER
+    parameter ST_IDLE=0, ST_DINO=1, ST_OBS=2, ST_GO=3;
 
-	// MUX outputs for VGA
-	always @ (*)
-	begin
-		gnt_dino = 1'b0;
-		gnt_obstacle = 1'b0;
-		MUX_write = 1'b0;
-		MUX_x = dino_x;
-		MUX_y = dino_y;
-		MUX_color = dino_color;
+    always @ (*)
+    case (y_Q)
+        ST_IDLE: begin
+            if (req_go) Y_D = ST_GO;          // Highest Priority
+            else if (req_dino) Y_D = ST_DINO;
+            else if (req_obstacle) Y_D = ST_OBS;
+            else Y_D = ST_IDLE;
+        end
+        ST_DINO: begin
+            if (req_go) Y_D = ST_GO;          // GO can interrupt Dino
+            else if (req_dino) Y_D = ST_DINO;
+            else Y_D = ST_IDLE;
+        end
+        ST_OBS: begin
+            if (req_go) Y_D = ST_GO;          // GO can interrupt Obstacle
+            else if (req_obstacle) Y_D = ST_OBS;
+            else Y_D = ST_IDLE;
+        end
+        ST_GO: begin
+            if (req_go) Y_D = ST_GO;          // Stay in GO state
+            else Y_D = ST_IDLE;
+        end
+        default: Y_D = ST_IDLE;
+    endcase
 
-		case (y_Q)
-			A: ; // idle
-			B: begin
-				gnt_dino = 1'b1;
-				MUX_write = dino_write;
-				MUX_x = dino_x;
-				MUX_y = dino_y;
-				MUX_color = dino_color;
-			end
-			C: begin
-				gnt_obstacle = 1'b1;
-				MUX_write = obstacle_write;
-				MUX_x = obstacle_x;
-				MUX_y = obstacle_y;
-				MUX_color = obstacle_color;
-			end
-		endcase
-	end
+    // MUX outputs for VGA
+    always @ (*)
+    begin
+        gnt_dino = 1'b0;
+        gnt_obstacle = 1'b0;
+        gnt_go = 1'b0;      // New Grant Signal
+        MUX_write = 1'b0;
+        MUX_x = dino_x;
+        MUX_y = dino_y;
+        MUX_color = dino_color;
+
+        case (y_Q)
+            ST_IDLE: ; 
+            ST_DINO: begin
+                gnt_dino = 1'b1;
+                MUX_write = dino_write;
+                MUX_x = dino_x;
+                MUX_y = dino_y;
+                MUX_color = dino_color;
+            end
+            ST_OBS: begin
+                gnt_obstacle = 1'b1;
+                MUX_write = obstacle_write;
+                MUX_x = obstacle_x;
+                MUX_y = obstacle_y;
+                MUX_color = obstacle_color;
+            end
+            ST_GO: begin
+                gnt_go = 1'b1;
+                MUX_write = go_write;
+                MUX_x = go_x;
+                MUX_y = go_y;
+                MUX_color = go_color;
+            end
+        endcase
+    end
 
 	always @(posedge CLOCK_50)
-	if (Resetn == 0)
+	if (GlobalResetn == 0)
 		y_Q <= A;
 	else
 		y_Q <= Y_D;
 
 	// Instantiate dinosaur (player) - MODE 1 (Jumper) - SCALED POSITIONS
 	object DINO (
-		.Resetn(Resetn && !collision_latched),
+		.Resetn(GlobalResetn && !collision_latched),
 		.Clock(CLOCK_50),
 		.gnt(gnt_dino),
 		.sel(1'b1),
@@ -178,7 +220,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 
 	// Instantiate obstacle - MODE 0 (Obstacle) - SCALED POSITIONS
 	object OBS (
-		.Resetn(Resetn && !collision_latched),
+		.Resetn(GlobalResetn && !collision_latched),
 		.Clock(CLOCK_50),
 		.gnt(gnt_obstacle),
 		.sel(1'b0),
@@ -196,6 +238,52 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 		.BASE_X(obstacle_base_x), 
    	    .BASE_Y(obstacle_base_y)
 	);
+
+	// Instantiate Game Over Screen - MODE 2 (Static)
+    wire [nX-1:0] go_x;
+    wire [nY-1:0] go_y;
+    wire [8:0] go_color;
+    wire go_write;
+    wire raw_req_go, req_go; // raw_req is what the object wants, req_go is what we allow
+
+    object GAMEOVER (
+        .Resetn(GlobalResetn), // Use the new GlobalResetn
+        .Clock(CLOCK_50),
+        .gnt(gnt_go),          // We will define this in the FSM
+        .sel(1'b0),
+        .jump_trigger(1'b0),
+        .duck_trigger(1'b0),         
+        .new_color(9'd0),      // Not used for sprites
+        .faster(1'b0),
+        .slower(1'b0),
+        .speed_level(8'd0),   
+        .req(raw_req_go),      // Outputs request when pixel is in the box
+        .VGA_x(go_x),
+        .VGA_y(go_y),
+        .VGA_color(go_color),
+        .VGA_write(go_write),
+        .BASE_X(),             // Not needed
+        .BASE_Y()              // Not needed
+    );
+    // 128x64 Image
+    defparam GAMEOVER.nX = nX;
+    defparam GAMEOVER.nY = nY;
+    defparam GAMEOVER.XSCREEN = 320;
+    defparam GAMEOVER.YSCREEN = 240;
+    defparam GAMEOVER.MODE = 2;      // STATIC MODE (Doesn't move)
+    defparam GAMEOVER.xOBJ = 7;      // 2^7 = 128 pixels wide
+    defparam GAMEOVER.yOBJ = 6;      // 2^6 = 64 pixels tall
+    defparam GAMEOVER.HAS_SPRITE = 1;
+    defparam GAMEOVER.INIT_FILE = "./MIF/game_over.mif"; // YOUR FILE NAME HERE
+    // Centering: (320-128)/2 = 96, (240-64)/2 = 88
+    defparam GAMEOVER.X_INIT = 9'd96;    
+    defparam GAMEOVER.Y_INIT = 8'd88;    
+    defparam GAMEOVER.KK = 19;
+
+    // IMPORTANT: Only let the Game Over screen draw if we have crashed!
+    assign req_go = raw_req_go && collision_latched;
+
+
 	defparam OBS.nX = nX;
 	defparam OBS.nY = nY;
 	defparam OBS.XSCREEN = 320;      // Changed from 640
@@ -209,9 +297,11 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	defparam OBS.Y_INIT = 8'd109;    // Changed from 9'd269 (approximately halved)
 	defparam OBS.KK = 19;
 
+
+
 	// VGA controller with dynamic background
 	vga_adapter VGA (
-		.resetn(Resetn),
+		.resetn(GlobalResetn),
 		.clock(CLOCK_50),
 
 		.color(MUX_color),
@@ -266,7 +356,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 
 	collision_latch COL_LATCH (
 		.Clock(CLOCK_50),
-		.Resetn(Resetn),
+		.Resetn(GlobalResetn),
 		.collision(collision),
 		.collision_latched(collision_latched)
 	);
@@ -274,7 +364,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	// Score module with collision and respawn handling
 	score_counter SCORE (
 		.Clock(CLOCK_50),
-		.Resetn(Resetn),
+		.Resetn(GlobalResetn),
 		.dino_x(dino_x),
 		.obstacle_x(obstacle_x),
 		.collision(collision),
@@ -708,6 +798,10 @@ module object (
 						Y_reg <= next_y_signed[nY-1:0]; // Move dino
 					end
                 end 
+
+				else if(MODE == 2) begin
+				 // do nothing for static mode
+				end
                 // Safety: Force ground height if Running
                 else begin
                     Y_reg <= GROUND_Y;
