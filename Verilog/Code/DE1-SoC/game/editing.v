@@ -49,6 +49,11 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 
 	assign Resetn = KEY[0];
 	sync S1 (~KEY[1], Resetn, CLOCK_50, jump_trigger_key);
+	sync S2(~KEY[2], Resetn, CLOCK_50, duck_trigger_key);
+
+	// UART "D" command and physical key[2]
+	wire duck_combined;
+	assign duck_combined = duck_pulse | duck_trigger_key;
 
 	// --UART recieve + decode ---
 	wire tick_16x;
@@ -143,7 +148,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 		.gnt(gnt_dino),
 		.sel(1'b1),
 		.jump_trigger(jump_trigger),
-		.duck_trigger(duck_pulse),    
+		.duck_trigger(duck_combined),    
 		.new_color(9'b000111000),
 		.faster(1'b0),
 		.slower(1'b0),
@@ -507,7 +512,9 @@ module object (
     parameter Running = 2'b00, Ascending = 2'b01, Descending = 2'b10;
 
     reg is_ducking;
-    reg [5:0] duck_timer;
+    reg [25:0] duck_timer;
+	localparam DUCK_DURATION = 26'd50_000_000;
+
 
     wire [KK-1:0] slow; 
     wire sync_adjusted;
@@ -626,15 +633,23 @@ module object (
             Y_reg <= Y_INIT;
         end else begin
             Jump_Q <= Jump_D;
+
+
             
-            if (duck_trigger && Jump_Q == Running) begin
+            if (duck_trigger && Jump_Q == Running && duck_timer == 0) begin
                 is_ducking <= 1;
-                duck_timer <= 60;
+                duck_timer <= DUCK_DURATION;
             end else if (duck_timer > 0) begin
                 duck_timer <= duck_timer - 1;
-            end else begin
-                is_ducking <= 0;
+				is_ducking <= 1; 
             end
+
+			// timer then expires
+			else begin
+				is_ducking <= 0;
+			
+			end
+			
 
             if (MODE == 1 && sync_adjusted) begin
                 case (Jump_Q)
