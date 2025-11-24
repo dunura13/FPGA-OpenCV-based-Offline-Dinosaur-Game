@@ -557,7 +557,7 @@ module object (
             sprite_rom #(.MEM_INIT_FILE("running3.mif")) r3 (.clk(Clock), .addr(sprite_addr), .q(pixel_data_run3));
             sprite_rom #(.MEM_INIT_FILE("running4.mif")) r4 (.clk(Clock), .addr(sprite_addr), .q(pixel_data_run4));
             sprite_rom #(.MEM_INIT_FILE("jump.mif")) rj (.clk(Clock), .addr(sprite_addr), .q(pixel_data_jump));
-            sprite_rom #(.MEM_INIT_FILE("duck.mif")) rd (.clk(Clock), .addr(sprite_addr), .q(pixel_data_duck));
+            sprite_rom #(.MEM_INIT_FILE("new_duck.mif")) rd (.clk(Clock), .addr(sprite_addr), .q(pixel_data_duck));
         end
     endgenerate
 
@@ -745,7 +745,7 @@ module object (
     assign VGA_y = ((prev_select) ? Y_prev : Y_reg) + YC + ((MODE==1)? SPRITE_Y_OFFSET : 0);
     
     assign VGA_color = (erase) ? 9'b111111111 : final_pixel_out;
-    assign VGA_write = write;
+    assign VGA_write = write & (erase || (final_pixel_out != 9'd0));
 
     assign BASE_X = X_reg;
     assign BASE_Y = Y_reg;
