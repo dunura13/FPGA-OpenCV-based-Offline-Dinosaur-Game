@@ -132,9 +132,10 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 
 	assign jump_trigger = jump_trigger_key | jump_pulse;
 
-	// *** NEW: Reset signal for gameover objects ***
+	// *** NEW: Enable signal for gameover objects ***
+	// Active (not reset) when collision is detected
 	wire gameover_reset;
-	assign gameover_reset = Resetn && !collision_latched;
+	assign gameover_reset = Resetn && collision_latched;
 
 	// Determine which gameover image to show based on score
 	wire show_gameover1, show_gameover2, show_gameover3, show_gameover4;
