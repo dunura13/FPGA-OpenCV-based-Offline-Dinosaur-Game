@@ -204,7 +204,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	defparam OBS.xOBJ = 5;
 	defparam OBS.yOBJ = 5;
 	defparam OBS.HAS_SPRITE = 1;
-	defparam OBS.INIT_FILE = "./MIF/obstacle_sprite.mif";
+	defparam OBS.INIT_FILE = "./MIF/leetcodeObstacle.mif";
 	defparam OBS.X_INIT = 9'd320;    // Changed from 10'd640 (halved)
 	defparam OBS.Y_INIT = 8'd109;    // Changed from 9'd269 (approximately halved)
 	defparam OBS.KK = 19;
@@ -782,7 +782,7 @@ module object (
                  + ((is_ducking) ? DUCK_Y_SHIFT : 0);
     
     assign VGA_color = (erase) ? 9'b111111111 : final_pixel_out;
-    assign VGA_write = write & (erase || (final_pixel_out != 9'd0));
+    assign VGA_write = write & (erase || (final_pixel_out != 9'b111111111));
 
     assign BASE_X = X_reg;
     assign BASE_Y = Y_reg;
