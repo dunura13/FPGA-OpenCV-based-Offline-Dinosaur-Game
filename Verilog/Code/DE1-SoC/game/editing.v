@@ -967,6 +967,7 @@ module object (
                     Y_reg <= spawn_y_input; // <--- ADD THIS BACK
                 end
             end
+		end
     end
 
     // --- X POSITION BLOCK ---
