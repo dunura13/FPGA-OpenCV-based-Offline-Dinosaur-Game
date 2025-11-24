@@ -296,7 +296,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	defparam OBS.HAS_SPRITE = 1;
 	defparam OBS.INIT_FILE = "./MIF/leetcodeObstacle.mif";
 	defparam OBS.X_INIT = 9'd320;    // Changed from 10'd640 (halved)
-	defparam OBS.Y_INIT = 8'd105;    // Changed from 9'd269 (approximately halved) (was 109)
+	defparam OBS.Y_INIT = 8'd102;    // Changed from 9'd269 (approximately halved) (was 109)
 	defparam OBS.KK = 19;
 
 	// Instantiate Game Over objects - Centered and stationary
