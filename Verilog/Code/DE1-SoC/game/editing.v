@@ -244,7 +244,8 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 		.new_color(9'b000111000),
 		.faster(1'b0),
 		.slower(1'b0),
-		.speed_level(speed_level),    
+		.speed_level(speed_level), 
+		.spawn_y_input(8'd0),   
 		.req(req_dino),
 		.VGA_x(dino_x),
 		.VGA_y(dino_y),
@@ -276,6 +277,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
         .duck_trigger(1'b0),         
 		.new_color(9'b111000000),
 		.faster(respawn_obstacle),
+		.spawn_y_input(random_obs_y),
 		.slower(1'b0),
         .speed_level(speed_level),   
 		.req(req_obstacle),
@@ -298,7 +300,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	defparam OBS.X_INIT = 9'd320;    // Changed from 10'd640 (halved)
 	defparam OBS.Y_INIT = 8'd102;    // Changed from 9'd269 (approximately halved) (was 109)
 	defparam OBS.KK = 19;
-	
+
 
 	// Instantiate Game Over objects - Centered and stationary
 	// Screen: 320x240, Image: 128x64
@@ -316,6 +318,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 		.faster(1'b0),
 		.slower(1'b0),
 		.speed_level(8'd0),
+		.spawn_y_input(8'd0),
 		.req(req_gameover1),
 		.VGA_x(gameover1_x),
 		.VGA_y(gameover1_y),
@@ -365,15 +368,15 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	defparam GAMEOVER2.XSCREEN = 320;
 	defparam GAMEOVER2.YSCREEN = 240;
 	defparam GAMEOVER2.MODE = 2;
-	defparam GAMEOVER2.xOBJ = 8;  // 2^8 = 256
-	defparam GAMEOVER2.yOBJ = 7;  // 2^7 = 128
-	defparam GAMEOVER2.GAMEOVER_WIDTH = 150;
-	defparam GAMEOVER2.GAMEOVER_HEIGHT = 75;
+	defparam GAMEOVER2.xOBJ = 7;  // 2^8 = 256
+	defparam GAMEOVER2.yOBJ = 6;  // 2^7 = 128
+	defparam GAMEOVER2.GAMEOVER_WIDTH = 128;
+	defparam GAMEOVER2.GAMEOVER_HEIGHT = 64;
 	defparam GAMEOVER2.HAS_SPRITE = 1;
 	defparam GAMEOVER2.STATIONARY = 1;
 	defparam GAMEOVER2.INIT_FILE = "./MIF/gameover2.mif";
-	defparam GAMEOVER2.X_INIT = 9'd85;
-	defparam GAMEOVER2.Y_INIT = 8'd83;
+	defparam GAMEOVER2.X_INIT = 9'd96;
+	defparam GAMEOVER2.Y_INIT = 8'd88;
 	defparam GAMEOVER2.KK = 19;
 
 	// Game Over 3: Score 15-19
@@ -401,15 +404,15 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	defparam GAMEOVER3.XSCREEN = 320;
 	defparam GAMEOVER3.YSCREEN = 240;
 	defparam GAMEOVER3.MODE = 2;
-	defparam GAMEOVER3.xOBJ = 8;  // 2^8 = 256
-	defparam GAMEOVER3.yOBJ = 7;  // 2^7 = 128
-	defparam GAMEOVER3.GAMEOVER_WIDTH = 150;
-	defparam GAMEOVER3.GAMEOVER_HEIGHT = 75;
+	defparam GAMEOVER3.xOBJ = 7;  // 2^8 = 256
+	defparam GAMEOVER3.yOBJ = 6;  // 2^7 = 128
+	defparam GAMEOVER3.GAMEOVER_WIDTH = 128;
+	defparam GAMEOVER3.GAMEOVER_HEIGHT = 64;
 	defparam GAMEOVER3.HAS_SPRITE = 1;
 	defparam GAMEOVER3.STATIONARY = 1;
 	defparam GAMEOVER3.INIT_FILE = "./MIF/gameover3.mif";
-	defparam GAMEOVER3.X_INIT = 9'd85;
-	defparam GAMEOVER3.Y_INIT = 8'd83;
+	defparam GAMEOVER3.X_INIT = 9'd96;
+	defparam GAMEOVER3.Y_INIT = 8'd88;
 	defparam GAMEOVER3.KK = 19;
 
 	// Game Over 4: Score >= 20
@@ -437,15 +440,15 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	defparam GAMEOVER4.XSCREEN = 320;
 	defparam GAMEOVER4.YSCREEN = 240;
 	defparam GAMEOVER4.MODE = 2;
-	defparam GAMEOVER4.xOBJ = 8;  // 2^8 = 256
-	defparam GAMEOVER4.yOBJ = 7;  // 2^7 = 128
-	defparam GAMEOVER4.GAMEOVER_WIDTH = 150;
-	defparam GAMEOVER4.GAMEOVER_HEIGHT = 75;
+	defparam GAMEOVER4.xOBJ = 7;  // 2^8 = 256
+	defparam GAMEOVER4.yOBJ = 6;  // 2^7 = 128
+	defparam GAMEOVER4.GAMEOVER_WIDTH = 128;
+	defparam GAMEOVER4.GAMEOVER_HEIGHT = 64;
 	defparam GAMEOVER4.HAS_SPRITE = 1;
 	defparam GAMEOVER4.STATIONARY = 1;
 	defparam GAMEOVER4.INIT_FILE = "./MIF/gameover4.mif";
-	defparam GAMEOVER4.X_INIT = 9'd85;
-	defparam GAMEOVER4.Y_INIT = 8'd83;
+	defparam GAMEOVER4.X_INIT = 9'd96;
+	defparam GAMEOVER4.Y_INIT = 8'd88;
 	defparam GAMEOVER4.KK = 19;
 
 	// VGA controller with dynamic background
@@ -746,6 +749,7 @@ module object (
     input faster, slower,
     input [8:0] new_color,
     input [7:0] speed_level,
+	input [7:0] spawn_y_input,
 
     output reg req,
     output [nX-1:0] VGA_x,      // Uses parameter nX
@@ -925,6 +929,10 @@ module object (
     reg [nX-1:0] random_x_offset;  // Changed from [9:0] to [nX-1:0]
     lfsr_16bit RAND_GEN (Clock, Resetn, lfsr_out);
 
+	wire[7:0] random_obs_y;
+	assign random_obs_y = (lfsr_out[0] == 1'b0) ? 8'd102 : 8'd109;
+
+
     always @(posedge Clock) begin
         if (!Resetn) random_x_offset <= 0;
         else if (faster && MODE == 0) begin 
@@ -1007,8 +1015,13 @@ module object (
         else if (MODE == 0 && !STATIONARY) begin 
            if (faster) begin
                X_reg <= XSCREEN - BOX_SIZE_X + random_x_offset;
+
+			   Y_reg <= spawn_y_input;
            end else if (sync_adjusted) begin
-               if (X_reg <= 1) X_reg <= XSCREEN - BOX_SIZE_X;
+               if (X_reg <= 1) begin
+			   		X_reg <= XSCREEN - BOX_SIZE_X;
+					Y_reg <= spawn_y_input;
+			   end
                else X_reg <= X_reg - 1'b1;
            end
         end
