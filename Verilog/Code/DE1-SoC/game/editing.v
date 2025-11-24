@@ -766,26 +766,29 @@ module Up_count (Clock, Resetn, Q);
 endmodule
 
 // Universal object module - CORRECTED VERSION
+// Universal object module - UPDATED WITH PROGRESSIVE SPEED CONTROL
 module object (
     input Resetn, Clock, gnt, sel, 
     input jump_trigger, duck_trigger,
     input faster, slower,
     input [8:0] new_color,
     input [7:0] speed_level,
+
     output reg req,
     output [nX-1:0] VGA_x,
     output [nY-1:0] VGA_y,
     output [8:0] VGA_color,
     output VGA_write,
-        
+    
     output [nX-1:0] BASE_X,
-    output [nY-1:0] BASE_Y);
+    output [nY-1:0] BASE_Y
+);
 
 	parameter KK = 19;
 	localparam signed [9:0] GRAVITY = 10'sd1;
 	localparam signed [9:0] JUMP_FORCE = -10'sd10;
 	localparam signed [9:0] GROUND_Y = 10'd109;
-	
+
 	reg signed [9:0] velocity_y;
 
     parameter nX = 9;
@@ -796,46 +799,77 @@ module object (
     parameter STATIONARY = 0;
     parameter GAMEOVER_WIDTH = 128;
     parameter GAMEOVER_HEIGHT = 64;
+
     parameter xOBJ = 5;
     parameter yOBJ = 5;
     parameter BOX_SIZE_X = 1 << xOBJ;
     parameter BOX_SIZE_Y = 1 << yOBJ;
     parameter HAS_SPRITE = 0;
     parameter INIT_FILE = ""; 
+
     parameter X_INIT = 9'd0;
     parameter Y_INIT = 8'd119;
     parameter JUMP_HEIGHT = 8'd65;
-        
+    
     parameter HITBOX_W = 9'd30;
     parameter HITBOX_H = 8'd30;
     parameter HITBOX_X_OFS = 9'd0;
     parameter HITBOX_Y_OFS = 8'd0;
 
+    // *** NEW: Flag to track if MODE 2 has completed drawing ***
     reg draw_complete_mode2;
+
     reg [nX-1:0] X_reg, X_prev;
     reg [nY-1:0] Y_reg, Y_prev;
     reg prev_select;
 
     wire [xOBJ-1:0] XC;
     wire [yOBJ-1:0] YC;
-    
+
     reg [3:0] draw_Q, draw_D;
     reg [1:0] Jump_Q;
-    
     parameter Running = 2'b00, Ascending = 2'b01, Descending = 2'b10;
-    
+
     reg is_ducking;
     reg [25:0] duck_timer;
 	localparam DUCK_DURATION = 26'd50_000_000;
-    
+
     wire [KK-1:0] slow; 
     wire sync_adjusted;
-    wire [KK-1:0] speed_threshold;  // ADDED: Speed threshold wire
     
+    // *** MODIFIED: Progressive speed control for obstacles ***
+    wire [KK-1:0] speed_threshold;
+    wire [7:0] capped_speed_level;
+    
+    // Cap speed_level at 10 (adjustable for desired max speed)
+    localparam MAX_SPEED_LEVEL = 8'd10;
+    assign capped_speed_level = (speed_level > MAX_SPEED_LEVEL) ? MAX_SPEED_LEVEL : speed_level;
+    
+    // Calculate dynamic threshold based on speed level
+    // Higher speed_level = lower threshold = faster movement
+    // Base threshold is (2^KK - 1), we reduce it based on speed_level
+    // Formula: threshold = base - (base * speed_level / 32)
+    // This gives gradual speed increase
+    localparam [KK-1:0] BASE_THRESHOLD = (1 << KK) - 1;
+    
+    // For MODE 0 (obstacles), use progressive speed. For others, use fixed speed.
+    assign speed_threshold = (MODE == 0) ? 
+                            (BASE_THRESHOLD - (BASE_THRESHOLD >> 5) * capped_speed_level) : 
+                            BASE_THRESHOLD;
+    
+    // Modified sync_adjusted to use dynamic threshold for obstacles
+    assign sync_adjusted = (MODE == 0) ? (slow >= speed_threshold) : (slow == 0);
+
     wire [14:0] sprite_addr;
     wire [12:0] sprite_addr_linear;
-        
+    
+    // For MODE 2 (gameover): Linear addressing for 128x64 stored in 8192 addresses
+    // Address = row * GAMEOVER_WIDTH + col
+    // For 128x64 images: addr = YC * 128 + XC (max = 63*128+127 = 8191)
     assign sprite_addr_linear = (YC * GAMEOVER_WIDTH) + XC;
+    
+    // For MODE 0/1: Standard 2D addressing {YC, XC}
+    // For MODE 2: Linear addressing (only lower 13 bits used for 8192 addresses)
     assign sprite_addr = (MODE == 2) ? {2'b0, sprite_addr_linear} : {YC, XC};
 
     wire [8:0] pixel_data_run1, pixel_data_run2, pixel_data_run3, pixel_data_run4;
@@ -843,9 +877,10 @@ module object (
     reg [8:0] anim_sprite_color; 
     reg [5:0] anim_tick;
     reg [1:0] run_frame;
+
     wire [8:0] static_sprite_color; 
+
     wire [5:0] anim_threshold;
-    
     assign anim_threshold = (speed_level > 15) ? 6'd8 : (20 - speed_level);
 
 	wire signed [10:0] current_y_signed = $signed({1'b0, Y_reg});
@@ -853,7 +888,6 @@ module object (
 
     generate
         if (HAS_SPRITE && MODE == 1) begin : GEN_PLAYER_SPRITES
-            // Assuming 'sprite_rom' is a defined module that accepts a MEM_INIT_FILE parameter
             sprite_rom #(.MEM_INIT_FILE("running1.mif")) r1 (.clk(Clock), .addr(sprite_addr), .q(pixel_data_run1));
             sprite_rom #(.MEM_INIT_FILE("running2.mif")) r2 (.clk(Clock), .addr(sprite_addr), .q(pixel_data_run2));
             sprite_rom #(.MEM_INIT_FILE("running3.mif")) r3 (.clk(Clock), .addr(sprite_addr), .q(pixel_data_run3));
@@ -865,7 +899,6 @@ module object (
 
     generate
         if (HAS_SPRITE && MODE == 0) begin : GEN_OBSTACLE_SPRITE
-            // Assuming 'object_mem' is a defined module
             object_mem #(
                 .INIT_FILE(INIT_FILE),
                 .n(9),
@@ -876,7 +909,6 @@ module object (
                 .q(static_sprite_color)
             );
         end else if (HAS_SPRITE && MODE == 2) begin : GEN_GAMEOVER_SPRITE
-            // Assuming 'object_mem' is a defined module
             object_mem #(
                 .INIT_FILE(INIT_FILE),
                 .n(9),
@@ -920,79 +952,42 @@ module object (
         end
     end
 
-    // The 'upDn_count' instantiation requires 'Lxc', 'Exc', 'Lyc', 'Eyc' 
-    // to be defined, which they are below, but the module instantiation 
-    // requires a specific connection structure.
-    // The issue here is likely the use of 'defparam' which is deprecated and 
-    // better replaced by inline parameter passing. The port connections are 
-    // also unusual for a typical counter.
-    // Assuming 'upDn_count' is a custom counter module.
-    // **ISSUE 1: Missing definition of Lxc, Exc, Lyc, Eyc in the 'object' module's wiring/register section.**
-    // **SOLUTION: Lxc, Exc, Lyc, Eyc are defined as wires/regs in the state machine, but they need to be defined *before* use in the instantiation.**
+    upDn_count U3 ({xOBJ{1'd0}}, Clock, Resetn, Lxc, Exc, 1'b1, XC);
+        defparam U3.n = xOBJ;
+    upDn_count U4 ({yOBJ{1'd0}}, Clock, Resetn, Lyc, Eyc, 1'b1, YC);
+        defparam U4.n = yOBJ;
 
-    // Assuming Lxc, Exc, Lyc, Eyc are signals *driven by* the state machine logic:
-    // **FIX: They are defined later in the state machine logic block but must be declared here.**
-    
-    // Correcting the instantiation parameter syntax (using #(...) instead of defparam)
-    // and assuming the port order is: {load_val}, Clock, Resetn, Load_X, Enable_X, Count_Up, Output_X
-    // NOTE: I'm leaving the original port connections, but replacing 'defparam'.
-
-    // **ISSUE 2: The 'Up_count' module has no parameters passed in your code before the 'defparam' call.**
-    // **SOLUTION: Replace 'defparam' with inline parameter passing: Up_count #(.n(KK)) U6 (...);**
-    // **ISSUE 3: The signal 'D_L' is not defined where it is used in the Jump/Duck logic. It should be D_L(11) from the parameter list below.**
-
-    // --- Signal Declarations for upDn_count (Moved up for correct use) ---
-    // They are declared as regs later in the code. Let's keep them as regs/wires 
-    // and assume they are declared before the upDn_count instantiation.
-    // Since they are defined as regs in the 'always @(*)' block, we'll keep that. 
-    // The issue is simply the use of 'defparam' and the undeclared 'D_L'.
-
-    // Define D_L here (as it's used above in the sequential logic)
-    parameter D_A=0, D_B=1, D_C=2, D_D=3, D_E=4, D_F=5, D_G=6, D_H=7, D_I=8, D_J=9, D_K=10, D_L=11, D_IDLE=12; // **FIXED: D_L is now defined**
-    
-    // --- Signal Declarations for upDn_count inputs (moved up) ---
-    reg Lx, Ly, Lxc, Lyc, Exc, Eyc, erase, write; // **FIXED: Lxc, Lyc, Exc, Eyc were implicitly declared later, now explicit**
-
-
-    // Instantiations: Replaced 'defparam' with inline parameter passing
-    // (Assuming the modules accept a parameter 'n')
-    upDn_count #(.n(xOBJ)) U3 ({xOBJ{1'd0}}, Clock, Resetn, Lxc, Exc, 1'b1, XC); 
-    upDn_count #(.n(yOBJ)) U4 ({yOBJ{1'd0}}, Clock, Resetn, Lyc, Eyc, 1'b1, YC); 
-    
-    // ===== SPEED CONTROL LOGIC =====
-    // Calculate dynamic speed threshold based on speed_level
-    assign speed_threshold = (MODE == 0) ? 
-        ((KK'(1) << (KK-1)) >> ((speed_level > 5'd16) ? 5'd16 : speed_level[4:0])) : 
-        (KK'(1) << (KK-1));
-
-    Up_count #(.n(KK)) U6 (Clock, Resetn, slow); // **FIXED: Replaced defparam with inline parameter**
-
-    // CORRECTED: Single sync_adjusted assignment
-    assign sync_adjusted = (slow >= speed_threshold);
+    Up_count U6 (Clock, Resetn, slow);
+        defparam U6.n = KK; 
 
     wire [15:0] lfsr_out;
     reg [nX-1:0] random_x_offset;
-    reg [nY-1:0] random_y_position;
-    
+    reg [nY-1:0] random_y_position;  // *** Random Y position register ***
     lfsr_16bit RAND_GEN (Clock, Resetn, lfsr_out);
 
+    // *** MODIFIED: Enhanced LFSR block with random Y position ***
     always @(posedge Clock) begin
         if (!Resetn) begin
             random_x_offset <= 0;
-            random_y_position <= Y_INIT;
+            random_y_position <= Y_INIT;  // Initialize to default Y position
         end
         else if (faster && MODE == 0) begin 
-             random_x_offset <= (lfsr_out[8:0] % 9'd100);
+            // Random X offset (existing functionality)
+            random_x_offset <= (lfsr_out[8:0] % 9'd100);
+            
+            // *** Random Y position - use bit 10 from LFSR to choose between two heights ***
             random_y_position <= lfsr_out[10] ? 8'd122 : 8'd102;
         end
     end
 
-    // Jump/Duck/Animation logic
+    // *** MODIFIED: Y_reg initialization - only for MODE 1 and MODE 2 ***
     always @(posedge Clock) begin
         if (!Resetn) begin
             Jump_Q <= Running;
             is_ducking <= 0;
             duck_timer <= 0;
+            // Only initialize Y_reg for MODE 1 and MODE 2 here
+            // MODE 0 (obstacles) will be initialized in the X/Y position block
             if (MODE != 0) Y_reg <= Y_INIT;
             velocity_y <= 0;
             anim_tick <= 0;
@@ -1006,18 +1001,18 @@ module object (
             end else if (duck_timer > 0) begin
                 duck_timer <= duck_timer - 1;
                 is_ducking <= 1; 
-                 run_frame <= 0;
+                run_frame <= 0;
                 anim_tick <= 0;
             end else begin
                 is_ducking <= 0;
             end
 
-            if (sync_adjusted) begin 
-                 if (anim_tick >= anim_threshold) begin 
-                     anim_tick <= 0; 
-                     run_frame <= run_frame + 1; 
-                 end else begin 
-                     anim_tick <= anim_tick + 1; 
+            if (sync_adjusted) begin
+                 if (anim_tick >= anim_threshold) begin
+                     anim_tick <= 0;
+                     run_frame <= run_frame + 1;
+                 end else begin
+                     anim_tick <= anim_tick + 1;
                  end
             end
 
@@ -1025,11 +1020,11 @@ module object (
                 velocity_y <= JUMP_FORCE;
                 Jump_Q <= Ascending;
             end
-                        
+            
             else if (MODE == 1 && sync_adjusted) begin
                 if (Jump_Q != Running) begin
                     velocity_y <= velocity_y + GRAVITY;
-                                        
+                    
                     if (next_y_signed >= $signed({1'b0, GROUND_Y})) begin
     					Y_reg <= GROUND_Y;
 						velocity_y <= 0;
@@ -1043,42 +1038,37 @@ module object (
                     velocity_y <= 0;
                 end
             end
-            
-            // **FIXED: Use D_L constant defined below**
-            if (MODE == 2 && draw_Q == D_L) begin 
+
+            // *** NEW: Set flag when MODE 2 completes drawing ***
+            if (MODE == 2 && draw_Q == D_L) begin
                 draw_complete_mode2 <= 1'b1;
             end
         end
     end
 
-    // ===== CORRECTED: Single X and Y position management block =====
+    // *** MODIFIED: X and Y position management with progressive speed ***
     always @(posedge Clock) begin
         if (!Resetn) begin
             X_reg <= X_INIT;
+            // *** Initialize Y position for obstacles (MODE 0) here ***
             if (MODE == 0) Y_reg <= Y_INIT;
         end
-        else if (MODE == 0 && !STATIONARY) begin
-            if (faster) begin
+        else if (MODE == 0 && !STATIONARY) begin 
+           if (faster) begin
+               // Reset X position with random offset
                X_reg <= XSCREEN - BOX_SIZE_X + random_x_offset;
+               // *** Also reset Y position to random height ***
                Y_reg <= random_y_position;
            end else if (sync_adjusted) begin
-               // Progressive speed increase based on speed_level
-               if (speed_level <= 8'd5) begin
-                   if (X_reg <= 1) X_reg <= XSCREEN - BOX_SIZE_X;
-                   else X_reg <= X_reg - 1'b1;
-               end else if (speed_level <= 8'd10) begin
-                   if (X_reg <= 2) X_reg <= XSCREEN - BOX_SIZE_X;
-                   else X_reg <= X_reg - 2'd2;
-               end else begin
-                   if (X_reg <= 3) X_reg <= XSCREEN - BOX_SIZE_X;
-                   else X_reg <= X_reg - 2'd3;
-               end
+               if (X_reg <= 1) X_reg <= XSCREEN - BOX_SIZE_X;
+               else X_reg <= X_reg - 1'b1;
            end
         end
     end
 
-    // Ghost cleanup logic
+    // --- IMPROVED GHOST CLEANUP LOGIC ---
     reg ignore_first_tick;
+
     always @(posedge Clock) begin
         if (!Resetn) begin
             ignore_first_tick <= 1'b1;
@@ -1100,17 +1090,15 @@ module object (
         end
     end
 
-    // Moved these parameter declarations up to resolve D_L undeclared error.
-    // parameter D_A=0, D_B=1, D_C=2, D_D=3, D_E=4, D_F=5, D_G=6, D_H=7, D_I=8, D_J=9, D_K=10, D_L=11, D_IDLE=12; 
-    
-    // Moved these signal declarations up to resolve undeclared error in upDn_count.
-    // reg Lx, Ly, Lxc, Lyc, Exc, Eyc, erase, write;
+    parameter D_A=0, D_B=1, D_C=2, D_D=3, D_E=4, D_F=5, D_G=6, D_H=7, D_I=8, D_J=9, D_K=10, D_L=11, D_IDLE=12;
+    reg Lx, Ly, Lxc, Lyc, Exc, Eyc, erase, write;
 
     always @(posedge Clock) begin
         if (!Resetn) draw_Q <= D_A;
         else draw_Q <= draw_D;
     end
 
+    // *** MODIFIED: Added D_IDLE state for MODE 2 after drawing completes ***
     always @(*) case (draw_Q)
         D_A: draw_D = D_B;
         D_B: if (XC != BOX_SIZE_X-1) draw_D = D_B; else draw_D = D_C;
@@ -1124,16 +1112,19 @@ module object (
         D_J: if (XC != BOX_SIZE_X-1) draw_D = D_J; else draw_D = D_K;
         D_K: if (YC != BOX_SIZE_Y-1) draw_D = D_J; else draw_D = D_L;
         D_L: begin
+            // *** MODIFIED: For MODE 2, go to idle state after drawing once ***
             if (MODE == 2) draw_D = D_IDLE;
             else draw_D = D_D;
         end
-        D_IDLE: draw_D = D_IDLE;
+        D_IDLE: draw_D = D_IDLE;  // *** Stay idle forever ***
         default: draw_D = D_A;
     endcase
 
+    // *** MODIFIED: Don't request when in D_IDLE ***
     always @(*) begin
         Lx = 0; Ly = 0; Lxc = 0; Lyc = 0; Exc = 0; Eyc = 0;
         erase = 0; write = 0; req = 0; prev_select = 0;
+
         case (draw_Q)
             D_A: begin Lx=1; Ly=1; Lxc=1; Lyc=1; end
             D_B: begin Exc=1; write=1; end
@@ -1147,37 +1138,36 @@ module object (
             D_J: begin req=1; Exc=1; write=1; end
             D_K: begin req=1; Lxc=1; Eyc=1; end
             D_L: Lyc=1;
-            D_IDLE: ;
+            D_IDLE: ; // *** No signals in idle state ***
         endcase
     end
-        
+    
     localparam SPRITE_Y_OFFSET = 10; 
 	localparam DUCK_Y_SHIFT = 0;
 
     assign VGA_x = ((prev_select) ? X_prev : X_reg) + XC;
-    assign VGA_y = ((prev_select) ? Y_prev : Y_reg) + YC
-                  + ((MODE==1)? SPRITE_Y_OFFSET : 0)
+    assign VGA_y = ((prev_select) ? Y_prev : Y_reg) + YC 
+                 + ((MODE==1)? SPRITE_Y_OFFSET : 0)
                  + ((is_ducking) ? DUCK_Y_SHIFT : 0);
-
+    
     assign VGA_color = (erase) ? 9'b111111111 : final_pixel_out;
     
     wire [8:0] transparent_color;
     assign transparent_color = (MODE == 1 && is_ducking) ? 9'd0 : 9'b111111111;
 
     wire within_gameover_bounds;
-    assign within_gameover_bounds = (MODE == 2) ?
-                                    (XC < GAMEOVER_WIDTH && YC < GAMEOVER_HEIGHT) :
-                                    1'b1;
+    assign within_gameover_bounds = (MODE == 2) ? 
+                                   (XC < GAMEOVER_WIDTH && YC < GAMEOVER_HEIGHT) : 
+                                   1'b1;
 
-    assign VGA_write = (MODE == 2) ?
-                       (write & within_gameover_bounds) :
+    assign VGA_write = (MODE == 2) ? 
+                      (write & within_gameover_bounds) :
                       (write & (erase || (final_pixel_out != transparent_color)));
 
     assign BASE_X = X_reg;
     assign BASE_Y = Y_reg;
-    
-endmodule
 
+endmodule
 // 16-bit LFSR
 module lfsr_16bit(Clock, Resetn, random_out);
 	input Clock, Resetn;
