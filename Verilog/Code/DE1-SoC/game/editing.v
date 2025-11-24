@@ -768,6 +768,7 @@ endmodule
 // Universal object module - CORRECTED VERSION
 // Universal object module - UPDATED WITH PROGRESSIVE SPEED CONTROL
 // Universal object module - UPDATED WITH PROGRESSIVE SPEED CONTROL
+// Universal object module - UPDATED WITH PROGRESSIVE SPEED CONTROL
 module object (
     input Resetn, Clock, gnt, sel, 
     input jump_trigger, duck_trigger,
@@ -839,31 +840,34 @@ module object (
     wire sync_adjusted;
     
     // *** MODIFIED: Progressive speed control for obstacles ***
-    wire [KK-1:0] speed_threshold;
+    wire [KK-1:0] slow_threshold;
     wire [7:0] capped_speed_level;
-    wire [7:0] speed_level_scaled;
     
-    // Cap speed_level at 50 (much higher cap since increment is tiny)
-    localparam MAX_SPEED_LEVEL = 8'd50;
+    // Cap speed_level at 30 for maximum speed control
+    localparam MAX_SPEED_LEVEL = 8'd30;
     assign capped_speed_level = (speed_level > MAX_SPEED_LEVEL) ? MAX_SPEED_LEVEL : speed_level;
     
-    // Scale down the speed level to get very gradual increase
-    // Divide by 10 to make speed increase 10x slower
-    assign speed_level_scaled = capped_speed_level / 10;
+    // Calculate speed threshold with controlled linear progression
+    // Start at maximum value (slowest) and decrease gradually
+    // Each level reduces threshold by ~500 (out of ~524,000)
+    // This gives about 0.1% speed increase per level
+    // At max level 30, speed is only about 3% faster
+    localparam [KK-1:0] BASE_THRESHOLD = (1 << KK) - 1;  // About 524,287 for KK=19
+    localparam [KK-1:0] SPEED_INCREMENT = 500;  // Small fixed increment per level
     
-    // Calculate dynamic threshold based on speed level
-    // MUCH smaller speed increment - only about 0.02% per level
-    // Base threshold is (2^KK - 1), we reduce it VERY slightly
-    localparam [KK-1:0] BASE_THRESHOLD = (1 << KK) - 1;
+    // Linear formula prevents sudden jumps
+    wire [KK-1:0] speed_reduction;
+    assign speed_reduction = (capped_speed_level * SPEED_INCREMENT > BASE_THRESHOLD/2) ? 
+                            BASE_THRESHOLD/2 : 
+                            (capped_speed_level * SPEED_INCREMENT);
     
-    // For MODE 0 (obstacles), use progressive speed with TINY increments
-    // Using >> 15 instead of >> 5 makes it 1024x slower (2^10 = 1024)
-    assign speed_threshold = (MODE == 0) ? 
-                            (BASE_THRESHOLD - ((BASE_THRESHOLD >> 15) * speed_level_scaled)) : 
-                            BASE_THRESHOLD;
+    // For MODE 0 (obstacles), use progressive speed. For others, use fixed speed.
+    assign slow_threshold = (MODE == 0) ? 
+                           (BASE_THRESHOLD - speed_reduction) : 
+                           BASE_THRESHOLD;
     
     // Modified sync_adjusted to use dynamic threshold for obstacles
-    assign sync_adjusted = (MODE == 0) ? (slow >= speed_threshold) : (slow == 0);
+    assign sync_adjusted = (MODE == 0) ? (slow >= slow_threshold) : (slow == 0);
 
     wire [14:0] sprite_addr;
     wire [12:0] sprite_addr_linear;
@@ -970,7 +974,7 @@ module object (
     reg [nY-1:0] random_y_position;  // *** Random Y position register ***
     lfsr_16bit RAND_GEN (Clock, Resetn, lfsr_out);
 
-    // *** MODIFIED: Enhanced LFSR block with random Y position ***
+    // *** MODIFIED: Enhanced LFSR block with better random Y distribution ***
     always @(posedge Clock) begin
         if (!Resetn) begin
             random_x_offset <= 0;
@@ -980,8 +984,14 @@ module object (
             // Random X offset (existing functionality)
             random_x_offset <= (lfsr_out[8:0] % 9'd100);
             
-            // *** Random Y position - use bit 10 from LFSR to choose between two heights ***
-            random_y_position <= lfsr_out[10] ? 8'd122 : 8'd102;
+            // *** IMPROVED: Better random Y position distribution ***
+            // Use modulo 3 for better distribution: 0,1 = jump over (66%), 2 = duck under (33%)
+            // This gives 2/3 chance for jump obstacles, 1/3 for duck obstacles
+            case (lfsr_out[11:10] % 3)
+                2'd0, 2'd1: random_y_position <= 8'd122;  // Jump over obstacle (higher position)
+                2'd2: random_y_position <= 8'd102;         // Duck under obstacle (lower position)
+                default: random_y_position <= 8'd122;      // Default to jump
+            endcase
         end
     end
 
