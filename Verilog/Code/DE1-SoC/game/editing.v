@@ -5,7 +5,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	// Parameters defined inside the module body - UPDATED FOR 320x240
 	parameter nX = 9;  // Changed from 10 to 9 bits for 320 width
 	parameter nY = 8;  // Changed from 9 to 8 bits for 240 height
-	parameter A = 2'b00, B = 2'b01, C = 2'b10;
+	parameter A = 2'b00, B = 2'b01, C = 2'b10, D = 2'b11;  // Added D state for gameover
 
 	// Port Declarations
 	input CLOCK_50;
@@ -26,18 +26,18 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	// Wire and Reg Declarations - UPDATED BIT WIDTHS
 	wire UART_RX;
 	assign UART_RX = GPIO_0[0]; // UART RX from GPIO pin
-	wire [8:0] dino_base_x, obstacle_base_x;      // Changed from [9:0] to [8:0]
-    wire [7:0] dino_base_y, obstacle_base_y;      // Changed from [8:0] to [7:0]
-	wire [nX-1:0] dino_x, obstacle_x;
-	wire [nY-1:0] dino_y, obstacle_y;
-	wire [8:0] dino_color, obstacle_color;
-	wire dino_write, obstacle_write;
+	wire [8:0] dino_base_x, obstacle_base_x;
+    wire [7:0] dino_base_y, obstacle_base_y;
+	wire [nX-1:0] dino_x, obstacle_x, gameover_x;
+	wire [nY-1:0] dino_y, obstacle_y, gameover_y;
+	wire [8:0] dino_color, obstacle_color, gameover_color;
+	wire dino_write, obstacle_write, gameover_write;
 	reg [nX-1:0] MUX_x;
 	reg [nY-1:0] MUX_y;
 	reg [8:0] MUX_color;
 	reg MUX_write;
-	wire req_dino, req_obstacle;
-	reg gnt_dino, gnt_obstacle;
+	wire req_dino, req_obstacle, req_gameover;
+	reg gnt_dino, gnt_obstacle, gnt_gameover;
 	reg [1:0] y_Q, Y_D;
 
 	wire Resetn, jump_trigger_key, jump_trigger;
@@ -49,6 +49,11 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 
 	assign Resetn = KEY[0];
 	sync S1 (~KEY[1], Resetn, CLOCK_50, jump_trigger_key);
+	sync S2(~KEY[2], Resetn, CLOCK_50, duck_trigger_key);
+
+	// UART "D" command and physical key[2]
+	wire duck_combined;
+	assign duck_combined = duck_pulse | duck_trigger_key;
 
 	// --UART recieve + decode ---
 	wire tick_16x;
@@ -88,24 +93,28 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 
 	assign jump_trigger = jump_trigger_key | jump_pulse;
 
-	// FSM for arbitration between dinosaur and obstacle drawing
+	// FSM for arbitration - UPDATED with gameover state
 	always @ (*)
 	case (y_Q)
-		A: if (req_dino) Y_D = B;
-		else if (req_obstacle) Y_D = C;
-		else Y_D = A;
+		A: if (req_gameover) Y_D = D;
+		   else if (req_dino) Y_D = B;
+		   else if (req_obstacle) Y_D = C;
+		   else Y_D = A;
 		B: if (req_dino) Y_D = B;
-		else Y_D = A;
+		   else Y_D = A;
 		C: if (req_obstacle) Y_D = C;
-		else Y_D = A;
+		   else Y_D = A;
+		D: if (req_gameover) Y_D = D;
+		   else Y_D = A;
 		default: Y_D = A;
 	endcase
 
-	// MUX outputs for VGA
+	// MUX outputs for VGA - UPDATED with gameover
 	always @ (*)
 	begin
 		gnt_dino = 1'b0;
 		gnt_obstacle = 1'b0;
+		gnt_gameover = 1'b0;
 		MUX_write = 1'b0;
 		MUX_x = dino_x;
 		MUX_y = dino_y;
@@ -127,6 +136,13 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 				MUX_y = obstacle_y;
 				MUX_color = obstacle_color;
 			end
+			D: begin
+				gnt_gameover = 1'b1;
+				MUX_write = gameover_write;
+				MUX_x = gameover_x;
+				MUX_y = gameover_y;
+				MUX_color = gameover_color;
+			end
 		endcase
 	end
 
@@ -143,7 +159,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 		.gnt(gnt_dino),
 		.sel(1'b1),
 		.jump_trigger(jump_trigger),
-		.duck_trigger(duck_pulse),    
+		.duck_trigger(duck_combined),    
 		.new_color(9'b000111000),
 		.faster(1'b0),
 		.slower(1'b0),
@@ -158,15 +174,15 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	);
 	defparam DINO.nX = nX;
 	defparam DINO.nY = nY;
-	defparam DINO.XSCREEN = 320;     // Changed from 640
-	defparam DINO.YSCREEN = 240;     // Changed from 480
+	defparam DINO.XSCREEN = 320;
+	defparam DINO.YSCREEN = 240;
 	defparam DINO.MODE = 1;
 	defparam DINO.xOBJ = 5;
 	defparam DINO.yOBJ = 5;
 	defparam DINO.HAS_SPRITE = 1;
-	defparam DINO.X_INIT = 9'd52;    // Changed from 10'd104 (halved)
-	defparam DINO.Y_INIT = 8'd109;   // Changed from 9'd258 (halved)
-	defparam DINO.JUMP_HEIGHT = 8'd60; // Changed from 9'd80 (halved)
+	defparam DINO.X_INIT = 9'd52;
+	defparam DINO.Y_INIT = 8'd109;
+	defparam DINO.JUMP_HEIGHT = 8'd60;
 	defparam DINO.KK = 19;
 
 	// Instantiate obstacle - MODE 0 (Obstacle) - SCALED POSITIONS
@@ -191,16 +207,32 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	);
 	defparam OBS.nX = nX;
 	defparam OBS.nY = nY;
-	defparam OBS.XSCREEN = 320;      // Changed from 640
-	defparam OBS.YSCREEN = 240;      // Changed from 480
+	defparam OBS.XSCREEN = 320;
+	defparam OBS.YSCREEN = 240;
 	defparam OBS.MODE = 0;
 	defparam OBS.xOBJ = 5;
 	defparam OBS.yOBJ = 5;
 	defparam OBS.HAS_SPRITE = 1;
 	defparam OBS.INIT_FILE = "./MIF/obstacle_sprite.mif";
-	defparam OBS.X_INIT = 9'd320;    // Changed from 10'd640 (halved)
-	defparam OBS.Y_INIT = 8'd114;    // Changed from 9'd269 (approximately halved)
+	defparam OBS.X_INIT = 9'd320;
+	defparam OBS.Y_INIT = 8'd114;
 	defparam OBS.KK = 19;
+
+	// Instantiate Game Over display - 200x100 pixels
+	gameover_display GAMEOVER (
+		.Resetn(Resetn),
+		.Clock(CLOCK_50),
+		.gnt(gnt_gameover),
+		.collision_latched(collision_latched),
+		.score(score),
+		.req(req_gameover),
+		.VGA_x(gameover_x),
+		.VGA_y(gameover_y),
+		.VGA_color(gameover_color),
+		.VGA_write(gameover_write)
+	);
+	defparam GAMEOVER.nX = nX;
+	defparam GAMEOVER.nY = nY;
 
 	// VGA controller with dynamic background
 	vga_adapter VGA (
@@ -220,14 +252,13 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 		.VGA_CLK(VGA_CLK)
 	);
 	defparam VGA.RESOLUTION="320x240";
-
 	defparam VGA.BACKGROUND_IMAGE ="./MIF/bmp_320_9.mif";
 
 	// UPDATED HITBOX PARAMETERS FOR 320x240
-	localparam HB_W = 9'd20;         // Changed from 10'd20 to 9'd20
-	localparam HB_H = 8'd30;         // Changed from 9'd30 to 8'd30
-	localparam HB_X_OFS = 9'd0;      // Changed from 10'd0 to 9'd0
-	localparam HB_Y_OFS = 8'd0;      // Changed from 9'd0 to 8'd0
+	localparam HB_W = 9'd20;
+	localparam HB_H = 8'd30;
+	localparam HB_X_OFS = 9'd0;
+	localparam HB_Y_OFS = 8'd0;
 
 	assign collision = (
 		(dino_base_x + HB_X_OFS + HB_W  >= obstacle_base_x + HB_X_OFS) &&
@@ -256,7 +287,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 		.respawn_obstacle(respawn_obstacle),
 		.speed_level(speed_level)
 	);
-	defparam SCORE.nX = nX;  // Pass updated nX parameter
+	defparam SCORE.nX = nX;
 
 	wire [3:0] ones, tens, hundreds;
 	wire [3:0] high_ones, high_tens, high_hundreds;
@@ -280,6 +311,184 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 
 endmodule
 
+// Game Over Display Module
+module gameover_display (
+    input Resetn, Clock, gnt,
+    input collision_latched,
+    input [15:0] score,
+    output reg req,
+    output [nX-1:0] VGA_x,
+    output [nY-1:0] VGA_y,
+    output [8:0] VGA_color,
+    output VGA_write
+);
+    parameter nX = 9;
+    parameter nY = 8;
+    
+    // Game over image dimensions
+    localparam GAMEOVER_WIDTH = 200;
+    localparam GAMEOVER_HEIGHT = 100;
+    
+    // Position to center on 320x240 screen
+    localparam GAMEOVER_X = 9'd60;   // (320-200)/2 = 60
+    localparam GAMEOVER_Y = 8'd70;   // (240-100)/2 = 70
+    
+    reg [7:0] x_count, y_count;
+    reg [3:0] state;
+    reg [1:0] gameover_select;  // Which gameover image to show
+    reg clear_active;
+    reg [15:0] score_snapshot;
+    
+    localparam IDLE = 4'd0;
+    localparam CLEAR_START = 4'd1;
+    localparam CLEARING = 4'd2;
+    localparam WAIT_GRANT = 4'd3;
+    localparam DRAWING = 4'd4;
+    localparam DRAW_NEXT_LINE = 4'd5;
+    localparam DONE = 4'd6;
+    
+    // Sprite memory address
+    wire [14:0] sprite_addr;
+    assign sprite_addr = y_count * GAMEOVER_WIDTH + x_count;
+    
+    // Sprite ROMs for different game over screens
+    wire [8:0] pixel_data1, pixel_data2, pixel_data3, pixel_data4;
+    
+    sprite_rom #(.MEM_INIT_FILE("gameover1.mif"), .DATA_WIDTH(9), .ADDR_WIDTH(15)) 
+        GO1 (.clk(Clock), .addr(sprite_addr), .q(pixel_data1));
+    sprite_rom #(.MEM_INIT_FILE("gameover2.mif"), .DATA_WIDTH(9), .ADDR_WIDTH(15)) 
+        GO2 (.clk(Clock), .addr(sprite_addr), .q(pixel_data2));
+    sprite_rom #(.MEM_INIT_FILE("gameover3.mif"), .DATA_WIDTH(9), .ADDR_WIDTH(15)) 
+        GO3 (.clk(Clock), .addr(sprite_addr), .q(pixel_data3));
+    sprite_rom #(.MEM_INIT_FILE("gameover4.mif"), .DATA_WIDTH(9), .ADDR_WIDTH(15)) 
+        GO4 (.clk(Clock), .addr(sprite_addr), .q(pixel_data4));
+    
+    // Select appropriate game over image based on score
+    reg [8:0] selected_pixel;
+    always @(*) begin
+        case (gameover_select)
+            2'd0: selected_pixel = pixel_data1;
+            2'd1: selected_pixel = pixel_data2;
+            2'd2: selected_pixel = pixel_data3;
+            2'd3: selected_pixel = pixel_data4;
+            default: selected_pixel = pixel_data1;
+        endcase
+    end
+    
+    // Capture score when collision occurs and determine gameover image
+    always @(posedge Clock) begin
+        if (!Resetn) begin
+            gameover_select <= 2'd0;
+            score_snapshot <= 16'd0;
+        end else if (collision_latched && score_snapshot == 16'd0) begin
+            score_snapshot <= score;
+            if (score < 16'd10)
+                gameover_select <= 2'd0;  // gameover1.mif
+            else if (score < 16'd15)
+                gameover_select <= 2'd1;  // gameover2.mif
+            else if (score < 16'd25)
+                gameover_select <= 2'd2;  // gameover3.mif
+            else
+                gameover_select <= 2'd3;  // gameover4.mif
+        end else if (!collision_latched) begin
+            score_snapshot <= 16'd0;
+        end
+    end
+    
+    // State machine
+    always @(posedge Clock) begin
+        if (!Resetn) begin
+            state <= CLEAR_START;
+            x_count <= 8'd0;
+            y_count <= 8'd0;
+            req <= 1'b0;
+            clear_active <= 1'b1;
+        end else begin
+            case (state)
+                IDLE: begin
+                    req <= 1'b0;
+                    if (collision_latched) begin
+                        state <= WAIT_GRANT;
+                        x_count <= 8'd0;
+                        y_count <= 8'd0;
+                    end
+                end
+                
+                CLEAR_START: begin
+                    clear_active <= 1'b1;
+                    state <= CLEARING;
+                    x_count <= 8'd0;
+                    y_count <= 8'd60;  // Start at y=60
+                    req <= 1'b1;
+                end
+                
+                CLEARING: begin
+                    req <= 1'b1;
+                    if (gnt) begin
+                        if (x_count < 8'd319) begin
+                            x_count <= x_count + 1'b1;
+                        end else begin
+                            x_count <= 8'd0;
+                            if (y_count < 8'd140) begin
+                                y_count <= y_count + 1'b1;
+                            end else begin
+                                clear_active <= 1'b0;
+                                state <= IDLE;
+                                req <= 1'b0;
+                            end
+                        end
+                    end
+                end
+                
+                WAIT_GRANT: begin
+                    req <= 1'b1;
+                    if (gnt) begin
+                        state <= DRAWING;
+                    end
+                end
+                
+                DRAWING: begin
+                    req <= 1'b1;
+                    if (gnt) begin
+                        if (x_count < GAMEOVER_WIDTH - 1) begin
+                            x_count <= x_count + 1'b1;
+                        end else begin
+                            x_count <= 8'd0;
+                            state <= DRAW_NEXT_LINE;
+                        end
+                    end
+                end
+                
+                DRAW_NEXT_LINE: begin
+                    if (y_count < GAMEOVER_HEIGHT - 1) begin
+                        y_count <= y_count + 1'b1;
+                        state <= DRAWING;
+                    end else begin
+                        state <= DONE;
+                        req <= 1'b0;
+                    end
+                end
+                
+                DONE: begin
+                    req <= 1'b0;
+                    // Stay in done state while collision is latched
+                    if (!collision_latched) begin
+                        state <= CLEAR_START;  // Go back to clearing on reset
+                    end
+                end
+                
+                default: state <= IDLE;
+            endcase
+        end
+    end
+    
+    assign VGA_x = clear_active ? x_count[8:0] : (GAMEOVER_X + x_count[8:0]);
+    assign VGA_y = clear_active ? y_count[7:0] : (GAMEOVER_Y + y_count[7:0]);
+    assign VGA_color = clear_active ? 9'b111111111 : selected_pixel;  // White when clearing, sprite pixel otherwise
+    assign VGA_write = (state == CLEARING || state == DRAWING) && gnt && (!clear_active ? (selected_pixel != 9'd0) : 1'b1);
+
+endmodule
+
 // Collision Latch Module
 module collision_latch(Clock, Resetn, collision, collision_latched);
 	input Clock, Resetn;
@@ -297,7 +506,7 @@ endmodule
 // Enhanced Score Counter Module - UPDATED FOR 320x240
 module score_counter(Clock, Resetn, dino_x, obstacle_x, collision,
 	collision_latched, score, high_score, respawn_obstacle, speed_level);
-	parameter nX = 9;  // Changed from 10
+	parameter nX = 9;
 
 	input Clock, Resetn;
 	input [nX-1:0] dino_x, obstacle_x;
@@ -319,7 +528,7 @@ module score_counter(Clock, Resetn, dino_x, obstacle_x, collision,
 
 	always @(posedge Clock) begin
 		if (!Resetn) begin
-			prev_obstacle_x <= 9'd320;  // Changed from 10'd640 to 9'd320
+			prev_obstacle_x <= 9'd320;
 			obstacle_passed <= 1'b0;
 			score_given <= 1'b0;
 			prev_collision <= 1'b0;
@@ -355,7 +564,6 @@ module score_counter(Clock, Resetn, dino_x, obstacle_x, collision,
 					score_given <= 1'b1;
 				end
 
-				// Changed threshold from 10'd500 to 9'd250 (halved)
 				if (obstacle_x > 9'd250 && prev_obstacle_x < 9'd50) begin
 					score_given <= 1'b0;
 				end
@@ -459,20 +667,19 @@ module object (
     input [7:0] speed_level,
 
     output reg req,
-    output [nX-1:0] VGA_x,      // Uses parameter nX
-    output [nY-1:0] VGA_y,      // Uses parameter nY
+    output [nX-1:0] VGA_x,
+    output [nY-1:0] VGA_y,
     output [8:0] VGA_color,
     output VGA_write,
     
-    output [nX-1:0] BASE_X,     // Changed to use nX
-    output [nY-1:0] BASE_Y      // Changed to use nY
+    output [nX-1:0] BASE_X,
+    output [nY-1:0] BASE_Y
 );
 
-    // Parameters - UPDATED FOR 320x240
-    parameter nX = 9;            // Changed from 10
-    parameter nY = 8;            // Changed from 9
-    parameter XSCREEN = 320;     // Changed from 640
-    parameter YSCREEN = 240;     // Changed from 480
+    parameter nX = 9;
+    parameter nY = 8;
+    parameter XSCREEN = 320;
+    parameter YSCREEN = 240;
     parameter MODE = 0;
 
     parameter xOBJ = 5;
@@ -482,19 +689,17 @@ module object (
     parameter HAS_SPRITE = 0;
     parameter INIT_FILE = ""; 
 
-    // UPDATED DEFAULT POSITIONS FOR 320x240
-    parameter X_INIT = 9'd0;     // Changed from 10'd0
-    parameter Y_INIT = 8'd119;   // Changed from 9'd239 (approximately halved)
-    parameter JUMP_HEIGHT = 8'd65; // Changed from 9'd80 (halved)
+    parameter X_INIT = 9'd0;
+    parameter Y_INIT = 8'd119;
+    parameter JUMP_HEIGHT = 8'd65;
     
     parameter KK = 19; 
 
-    parameter HITBOX_W = 9'd30;      // Changed from 10'd30
-    parameter HITBOX_H = 8'd30;      // Changed from 9'd30
-    parameter HITBOX_X_OFS = 9'd0;   // Changed from 10'd0
-    parameter HITBOX_Y_OFS = 8'd0;   // Changed from 9'd0
+    parameter HITBOX_W = 9'd30;
+    parameter HITBOX_H = 8'd30;
+    parameter HITBOX_X_OFS = 9'd0;
+    parameter HITBOX_Y_OFS = 8'd0;
 
-    // Internal registers with updated bit widths
     reg [nX-1:0] X_reg, X_prev;
     reg [nY-1:0] Y_reg, Y_prev;
     reg prev_select;
@@ -507,12 +712,12 @@ module object (
     parameter Running = 2'b00, Ascending = 2'b01, Descending = 2'b10;
 
     reg is_ducking;
-    reg [5:0] duck_timer;
+    reg [25:0] duck_timer;
+	localparam DUCK_DURATION = 26'd50_000_000;
 
     wire [KK-1:0] slow; 
     wire sync_adjusted;
 
-    // Sprite logic
     wire [9:0] sprite_addr;
     assign sprite_addr = {YC[4:0], XC[4:0]};
 
@@ -548,7 +753,7 @@ module object (
             sprite_rom #(.MEM_INIT_FILE("running3.mif")) r3 (.clk(Clock), .addr(sprite_addr), .q(pixel_data_run3));
             sprite_rom #(.MEM_INIT_FILE("running4.mif")) r4 (.clk(Clock), .addr(sprite_addr), .q(pixel_data_run4));
             sprite_rom #(.MEM_INIT_FILE("jump.mif")) rj (.clk(Clock), .addr(sprite_addr), .q(pixel_data_jump));
-            sprite_rom #(.MEM_INIT_FILE("duck.mif")) rd (.clk(Clock), .addr(sprite_addr), .q(pixel_data_duck));
+            sprite_rom #(.MEM_INIT_FILE("new_duck.mif")) rd (.clk(Clock), .addr(sprite_addr), .q(pixel_data_duck));
         end
     endgenerate
 
@@ -608,13 +813,13 @@ module object (
     assign sync_adjusted = (slow == 0);
 
     wire [15:0] lfsr_out;
-    reg [nX-1:0] random_x_offset;  // Changed from [9:0] to [nX-1:0]
+    reg [nX-1:0] random_x_offset;
     lfsr_16bit RAND_GEN (Clock, Resetn, lfsr_out);
 
     always @(posedge Clock) begin
         if (!Resetn) random_x_offset <= 0;
         else if (faster && MODE == 0) begin 
-             random_x_offset <= (lfsr_out[8:0] % 9'd100);  // Changed from [9:0] and 10'd200
+             random_x_offset <= (lfsr_out[8:0] % 9'd100);
         end
     end
 
@@ -626,15 +831,17 @@ module object (
             Y_reg <= Y_INIT;
         end else begin
             Jump_Q <= Jump_D;
-            
-            if (duck_trigger && Jump_Q == Running) begin
+
+            if (duck_trigger && Jump_Q == Running && duck_timer == 0) begin
                 is_ducking <= 1;
-                duck_timer <= 60;
+                duck_timer <= DUCK_DURATION;
             end else if (duck_timer > 0) begin
                 duck_timer <= duck_timer - 1;
-            end else begin
-                is_ducking <= 0;
+				is_ducking <= 1; 
             end
+			else begin
+				is_ducking <= 0;
+			end
 
             if (MODE == 1 && sync_adjusted) begin
                 case (Jump_Q)
@@ -728,7 +935,7 @@ module object (
     assign VGA_y = ((prev_select) ? Y_prev : Y_reg) + YC + ((MODE==1)? SPRITE_Y_OFFSET : 0);
     
     assign VGA_color = (erase) ? 9'b111111111 : final_pixel_out;
-    assign VGA_write = write;
+    assign VGA_write = write & (erase || (final_pixel_out != 9'd0));
 
     assign BASE_X = X_reg;
     assign BASE_Y = Y_reg;
@@ -927,4 +1134,3 @@ module sprite_rom #(
         q <= rom[addr];
     end
 endmodule
-
