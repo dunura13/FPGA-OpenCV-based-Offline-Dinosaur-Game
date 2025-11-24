@@ -236,12 +236,25 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	localparam HB_X_OFS = 9'd0;      // Changed from 10'd0 to 9'd0
 	localparam HB_Y_OFS = 8'd0;      // Changed from 9'd0 to 8'd0
 
-	assign collision = (
-		(dino_base_x + HB_X_OFS + HB_W  >= obstacle_base_x + HB_X_OFS) &&
-		(dino_base_x + HB_X_OFS <= obstacle_base_x + HB_X_OFS + HB_W) &&
-		(dino_base_y + HB_Y_OFS + HB_H  >= obstacle_base_y + HB_Y_OFS) &&
-		(dino_base_y + HB_Y_OFS <= obstacle_base_y + HB_Y_OFS + HB_H)
-	);
+	wire [7:0] current_dino_h;
+    assign current_dino_h = (duck_combined) ? 8'd15 : 8'd30;
+
+    // 2. Collision Math
+    // We use current_dino_h instead of the static HB_H for the dinosaur
+    assign collision = (
+        // X-Axis Overlap (Width is constant)
+        (dino_base_x + HB_X_OFS + HB_W  >= obstacle_base_x + HB_X_OFS) &&
+        (dino_base_x + HB_X_OFS         <= obstacle_base_x + HB_X_OFS + HB_W) &&
+        
+        // Y-Axis Overlap (Dino Height is DYNAMIC)
+        // Note: Y increases downwards.
+        // Dino Bottom (Base Y + Height) >= Obs Top (Base Y)
+        (dino_base_y + HB_Y_OFS + current_dino_h >= obstacle_base_y + HB_Y_OFS) &&
+        
+        // Dino Top (Base Y) <= Obs Bottom (Base Y + Obs Height)
+        // Note: Obstacle always uses the full HB_H (30)
+        (dino_base_y + HB_Y_OFS <= obstacle_base_y + HB_Y_OFS + HB_H)
+    );
 
 	collision_latch COL_LATCH (
 		.Clock(CLOCK_50),
