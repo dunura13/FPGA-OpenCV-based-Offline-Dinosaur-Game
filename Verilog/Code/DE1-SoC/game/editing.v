@@ -764,7 +764,7 @@ module Up_count (Clock, Resetn, Q);
 			Q <= Q + 1'b1;
 endmodule
 
-// Universal object module - UPDATED FOR 320x240 WITH STATIC GAMEOVER FIX
+// Universal object module - UPDATED FOR 320x240 WITH RANDOM Y POSITION
 module object (
     input Resetn, Clock, gnt, sel, 
     input jump_trigger, duck_trigger,
@@ -939,12 +939,21 @@ module object (
 
     wire [15:0] lfsr_out;
     reg [nX-1:0] random_x_offset;
+    reg [nY-1:0] random_y_position;  // *** NEW: Random Y position register ***
     lfsr_16bit RAND_GEN (Clock, Resetn, lfsr_out);
 
+    // *** MODIFIED: Enhanced LFSR block with random Y position ***
     always @(posedge Clock) begin
-        if (!Resetn) random_x_offset <= 0;
+        if (!Resetn) begin
+            random_x_offset <= 0;
+            random_y_position <= Y_INIT;  // Initialize to default Y position
+        end
         else if (faster && MODE == 0) begin 
-             random_x_offset <= (lfsr_out[8:0] % 9'd100);
+            // Random X offset (existing functionality)
+            random_x_offset <= (lfsr_out[8:0] % 9'd100);
+            
+            // *** NEW: Random Y position - use bit 10 from LFSR to choose between two heights ***
+            random_y_position <= lfsr_out[10] ? 8'd122 : 8'd102;
         end
     end
 
@@ -1012,11 +1021,19 @@ module object (
         end
     end
 
+    // *** MODIFIED: X and Y position management for obstacles ***
     always @(posedge Clock) begin
-        if (!Resetn) X_reg <= X_INIT;
+        if (!Resetn) begin
+            X_reg <= X_INIT;
+            // Initialize Y position for obstacles
+            if (MODE == 0) Y_reg <= Y_INIT;
+        end
         else if (MODE == 0 && !STATIONARY) begin 
            if (faster) begin
+               // Reset X position with random offset
                X_reg <= XSCREEN - BOX_SIZE_X + random_x_offset;
+               // *** NEW: Also reset Y position to random height ***
+               Y_reg <= random_y_position;
            end else if (sync_adjusted) begin
                if (X_reg <= 1) X_reg <= XSCREEN - BOX_SIZE_X;
                else X_reg <= X_reg - 1'b1;
