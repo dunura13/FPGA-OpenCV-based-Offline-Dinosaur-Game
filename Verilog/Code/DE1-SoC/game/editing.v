@@ -545,6 +545,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	);
 	defparam SCORE.nX = nX;  // Pass updated nX parameter
 
+
 	wire [3:0] ones, tens, hundreds;
 	wire [3:0] high_ones, high_tens, high_hundreds;
 
