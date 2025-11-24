@@ -298,6 +298,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	defparam OBS.X_INIT = 9'd320;    // Changed from 10'd640 (halved)
 	defparam OBS.Y_INIT = 8'd102;    // Changed from 9'd269 (approximately halved) (was 109)
 	defparam OBS.KK = 19;
+	
 
 	// Instantiate Game Over objects - Centered and stationary
 	// Screen: 320x240, Image: 128x64
