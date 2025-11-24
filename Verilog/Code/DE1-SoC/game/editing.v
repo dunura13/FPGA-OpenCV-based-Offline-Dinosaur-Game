@@ -765,7 +765,7 @@ module Up_count (Clock, Resetn, Q);
 			Q <= Q + 1'b1;
 endmodule
 
-// Universal object module - UPDATED FOR 320x240 WITH RANDOM Y POSITION (FIXED)
+// Universal object module - CORRECTED VERSION
 module object (
     input Resetn, Clock, gnt, sel, 
     input jump_trigger, duck_trigger,
@@ -815,7 +815,6 @@ module object (
     parameter HITBOX_X_OFS = 9'd0;
     parameter HITBOX_Y_OFS = 8'd0;
 
-    // *** NEW: Flag to track if MODE 2 has completed drawing ***
     reg draw_complete_mode2;
 
     reg [nX-1:0] X_reg, X_prev;
@@ -835,17 +834,12 @@ module object (
 
     wire [KK-1:0] slow; 
     wire sync_adjusted;
+    wire [KK-1:0] speed_threshold;  // ADDED: Speed threshold wire
 
     wire [14:0] sprite_addr;
     wire [12:0] sprite_addr_linear;
     
-    // For MODE 2 (gameover): Linear addressing for 128x64 stored in 8192 addresses
-    // Address = row * GAMEOVER_WIDTH + col
-    // For 128x64 images: addr = YC * 128 + XC (max = 63*128+127 = 8191)
     assign sprite_addr_linear = (YC * GAMEOVER_WIDTH) + XC;
-    
-    // For MODE 0/1: Standard 2D addressing {YC, XC}
-    // For MODE 2: Linear addressing (only lower 13 bits used for 8192 addresses)
     assign sprite_addr = (MODE == 2) ? {2'b0, sprite_addr_linear} : {YC, XC};
 
     wire [8:0] pixel_data_run1, pixel_data_run2, pixel_data_run3, pixel_data_run4;
@@ -933,39 +927,40 @@ module object (
     upDn_count U4 ({yOBJ{1'd0}}, Clock, Resetn, Lyc, Eyc, 1'b1, YC);
         defparam U4.n = yOBJ;
 
-    Up_count U6 (Clock, Resetn, slow);
-        defparam U6.n = KK; 
+    // ===== SPEED CONTROL LOGIC =====
+    // Calculate dynamic speed threshold based on speed_level
+    assign speed_threshold = (MODE == 0) ? 
+        ((KK'(1) << (KK-1)) >> ((speed_level > 5'd16) ? 5'd16 : speed_level[4:0])) : 
+        (KK'(1) << (KK-1));
 
-    assign sync_adjusted = (slow == 0);
+    Up_count U6 (Clock, Resetn, slow);
+        defparam U6.n = KK;
+
+    // CORRECTED: Single sync_adjusted assignment
+    assign sync_adjusted = (slow >= speed_threshold);
 
     wire [15:0] lfsr_out;
     reg [nX-1:0] random_x_offset;
-    reg [nY-1:0] random_y_position;  // *** NEW: Random Y position register ***
+    reg [nY-1:0] random_y_position;
     lfsr_16bit RAND_GEN (Clock, Resetn, lfsr_out);
 
-    // *** MODIFIED: Enhanced LFSR block with random Y position ***
     always @(posedge Clock) begin
         if (!Resetn) begin
             random_x_offset <= 0;
-            random_y_position <= Y_INIT;  // Initialize to default Y position
+            random_y_position <= Y_INIT;
         end
         else if (faster && MODE == 0) begin 
-            // Random X offset (existing functionality)
             random_x_offset <= (lfsr_out[8:0] % 9'd100);
-            
-            // *** NEW: Random Y position - use bit 10 from LFSR to choose between two heights ***
             random_y_position <= lfsr_out[10] ? 8'd122 : 8'd102;
         end
     end
 
-    // *** MODIFIED: Y_reg initialization - only for MODE 1 and MODE 2 ***
+    // Jump/Duck/Animation logic
     always @(posedge Clock) begin
         if (!Resetn) begin
             Jump_Q <= Running;
             is_ducking <= 0;
             duck_timer <= 0;
-            // Only initialize Y_reg for MODE 1 and MODE 2 here
-            // MODE 0 (obstacles) will be initialized in the X/Y position block
             if (MODE != 0) Y_reg <= Y_INIT;
             velocity_y <= 0;
             anim_tick <= 0;
@@ -1017,34 +1012,39 @@ module object (
                 end
             end
 
-            // *** NEW: Set flag when MODE 2 completes drawing ***
             if (MODE == 2 && draw_Q == D_L) begin
                 draw_complete_mode2 <= 1'b1;
             end
         end
     end
 
-    // *** MODIFIED: X and Y position management - now handles Y_reg for MODE 0 ***
+    // ===== CORRECTED: Single X and Y position management block =====
     always @(posedge Clock) begin
         if (!Resetn) begin
             X_reg <= X_INIT;
-            // *** CHANGED: Initialize Y position for obstacles (MODE 0) here ***
             if (MODE == 0) Y_reg <= Y_INIT;
         end
         else if (MODE == 0 && !STATIONARY) begin 
            if (faster) begin
-               // Reset X position with random offset
                X_reg <= XSCREEN - BOX_SIZE_X + random_x_offset;
-               // *** NEW: Also reset Y position to random height ***
                Y_reg <= random_y_position;
            end else if (sync_adjusted) begin
-               if (X_reg <= 1) X_reg <= XSCREEN - BOX_SIZE_X;
-               else X_reg <= X_reg - 1'b1;
+               // Progressive speed increase based on speed_level
+               if (speed_level <= 8'd5) begin
+                   if (X_reg <= 1) X_reg <= XSCREEN - BOX_SIZE_X;
+                   else X_reg <= X_reg - 1'b1;
+               end else if (speed_level <= 8'd10) begin
+                   if (X_reg <= 2) X_reg <= XSCREEN - BOX_SIZE_X;
+                   else X_reg <= X_reg - 2'd2;
+               end else begin
+                   if (X_reg <= 3) X_reg <= XSCREEN - BOX_SIZE_X;
+                   else X_reg <= X_reg - 2'd3;
+               end
            end
         end
     end
 
-    // --- IMPROVED GHOST CLEANUP LOGIC ---
+    // Ghost cleanup logic
     reg ignore_first_tick;
 
     always @(posedge Clock) begin
@@ -1076,7 +1076,6 @@ module object (
         else draw_Q <= draw_D;
     end
 
-    // *** MODIFIED: Added D_IDLE state for MODE 2 after drawing completes ***
     always @(*) case (draw_Q)
         D_A: draw_D = D_B;
         D_B: if (XC != BOX_SIZE_X-1) draw_D = D_B; else draw_D = D_C;
@@ -1090,15 +1089,13 @@ module object (
         D_J: if (XC != BOX_SIZE_X-1) draw_D = D_J; else draw_D = D_K;
         D_K: if (YC != BOX_SIZE_Y-1) draw_D = D_J; else draw_D = D_L;
         D_L: begin
-            // *** MODIFIED: For MODE 2, go to idle state after drawing once ***
             if (MODE == 2) draw_D = D_IDLE;
             else draw_D = D_D;
         end
-        D_IDLE: draw_D = D_IDLE;  // *** NEW: Stay idle forever ***
+        D_IDLE: draw_D = D_IDLE;
         default: draw_D = D_A;
     endcase
 
-    // *** MODIFIED: Don't request when in D_IDLE ***
     always @(*) begin
         Lx = 0; Ly = 0; Lxc = 0; Lyc = 0; Exc = 0; Eyc = 0;
         erase = 0; write = 0; req = 0; prev_select = 0;
@@ -1116,7 +1113,7 @@ module object (
             D_J: begin req=1; Exc=1; write=1; end
             D_K: begin req=1; Lxc=1; Eyc=1; end
             D_L: Lyc=1;
-            D_IDLE: ; // *** NEW: No signals in idle state ***
+            D_IDLE: ;
         endcase
     end
     
