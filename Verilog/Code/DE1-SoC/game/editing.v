@@ -201,8 +201,8 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	defparam OBS.XSCREEN = 320;      // Changed from 640
 	defparam OBS.YSCREEN = 240;      // Changed from 480
 	defparam OBS.MODE = 0;
-	defparam OBS.xOBJ = 5;
-	defparam OBS.yOBJ = 5;
+	defparam OBS.xOBJ = 4;
+	defparam OBS.yOBJ = 4;
 	defparam OBS.HAS_SPRITE = 1;
 	defparam OBS.INIT_FILE = "./MIF/leetcodeObstacle.mif";
 	defparam OBS.X_INIT = 9'd320;    // Changed from 10'd640 (halved)
@@ -213,7 +213,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	vga_adapter VGA (
 		.resetn(Resetn),
 		.clock(CLOCK_50),
-		
+
 		.color(MUX_color),
 		.x(MUX_x),
 		.y(MUX_y),
@@ -231,30 +231,37 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 
 	defparam VGA.BACKGROUND_IMAGE ="./MIF/bmp_320_9.mif";
 
-	// UPDATED HITBOX PARAMETERS FOR 320x240
-	localparam HB_W = 9'd20;         // Changed from 10'd20 to 9'd20
-	localparam HB_H = 8'd30;         // Changed from 9'd30 to 8'd30
-	localparam HB_X_OFS = 9'd0;      // Changed from 10'd0 to 9'd0
-	localparam HB_Y_OFS = 8'd0;      // Changed from 9'd0 to 8'd0
+	// --- DINO HITBOX (20x30 inside a 32x32 image) ---
+    localparam HB_W = 9'd20;         
+    localparam HB_H = 8'd30;         
+    localparam HB_X_OFS = 9'd6;      // Centered: (32-20)/2 = 6
+    localparam HB_Y_OFS = 8'd2;      // Centered: (32-30)/2 = 1
+
+    // --- OBSTACLE HITBOX (16x16 inside a 16x16 image) ---
+    localparam HB_W_OBS = 9'd16;     // Full width of the sprite
+    localparam HB_H_OBS = 8'd16;     // Full height of the sprite
+    localparam HB_X_OFS_OBS = 9'd0;  // No offset needed if it fills the square
+    localparam HB_Y_OFS_OBS = 8'd0;
+
 
 	wire [7:0] current_dino_h;
     assign current_dino_h = (duck_combined) ? 8'd15 : 8'd30;
 
     // 2. Collision Math
     // We use current_dino_h instead of the static HB_H for the dinosaur
-    assign collision = (
-        // X-Axis Overlap (Width is constant)
-        (dino_base_x + HB_X_OFS + HB_W  >= obstacle_base_x + HB_X_OFS) &&
-        (dino_base_x + HB_X_OFS         <= obstacle_base_x + HB_X_OFS + HB_W) &&
+   assign collision = (
+        // X-Axis Overlap
+        // Dino Right Edge >= Obs Left Edge
+        (dino_base_x + HB_X_OFS + HB_W  >= obstacle_base_x + HB_X_OFS_OBS) &&
+        // Dino Left Edge <= Obs Right Edge
+        (dino_base_x + HB_X_OFS         <= obstacle_base_x + HB_X_OFS_OBS + HB_W_OBS) &&
         
-        // Y-Axis Overlap (Dino Height is DYNAMIC)
-        // Note: Y increases downwards.
-        // Dino Bottom (Base Y + Height) >= Obs Top (Base Y)
-        (dino_base_y + HB_Y_OFS + current_dino_h >= obstacle_base_y + HB_Y_OFS) &&
+        // Y-Axis Overlap
+        // Dino Bottom >= Obs Top
+        (dino_base_y + HB_Y_OFS + current_dino_h >= obstacle_base_y + HB_Y_OFS_OBS) &&
         
-        // Dino Top (Base Y) <= Obs Bottom (Base Y + Obs Height)
-        // Note: Obstacle always uses the full HB_H (30)
-        (dino_base_y + HB_Y_OFS <= obstacle_base_y + HB_Y_OFS + HB_H)
+        // Dino Top <= Obs Bottom
+        (dino_base_y + HB_Y_OFS <= obstacle_base_y + HB_Y_OFS_OBS + HB_H_OBS)
     );
 
 	collision_latch COL_LATCH (
@@ -546,7 +553,7 @@ module object (
 
     // Sprite logic
     wire [9:0] sprite_addr;
-    assign sprite_addr = {YC[4:0], XC[4:0]};
+    assign sprite_addr = {YC[yOBJ-1:0], XC[xOBJ-1:0]};
 
     wire [8:0] pixel_data_run1, pixel_data_run2, pixel_data_run3, pixel_data_run4;
     wire [8:0] pixel_data_jump, pixel_data_duck;
@@ -580,7 +587,7 @@ module object (
             object_mem #(
                 .INIT_FILE(INIT_FILE),
                 .n(9),
-                .Mn(10)
+                .Mn(xOBJ + yOBJ)
             ) SPRITE_ROM (
                 .clock(Clock),
                 .address(sprite_addr), 
@@ -783,7 +790,7 @@ module object (
                  + ((is_ducking) ? DUCK_Y_SHIFT : 0);
     
     assign VGA_color = (erase) ? 9'b111111111 : final_pixel_out;
-    a// --- DYNAMIC TRANSPARENCY LOGIC ---
+    // --- DYNAMIC TRANSPARENCY LOGIC ---
     
     wire [8:0] transparent_color;
     
@@ -797,6 +804,7 @@ module object (
 
     assign BASE_X = X_reg;
     assign BASE_Y = Y_reg;
+
 
 
 
