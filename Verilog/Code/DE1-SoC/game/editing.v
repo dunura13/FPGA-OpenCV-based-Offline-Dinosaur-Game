@@ -749,36 +749,33 @@ module object (
     input faster, slower,
     input [8:0] new_color,
     input [7:0] speed_level,
-	input [7:0] spawn_y_input,
+    input [7:0] spawn_y_input,
 
     output reg req,
-    output [nX-1:0] VGA_x,      // Uses parameter nX
-    output [nY-1:0] VGA_y,      // Uses parameter nY
+    output [nX-1:0] VGA_x,      
+    output [nY-1:0] VGA_y,      
     output [8:0] VGA_color,
     output VGA_write,
     
-    output [nX-1:0] BASE_X,     // Changed to use nX
-    output [nY-1:0] BASE_Y      // Changed to use nY
+    output [nX-1:0] BASE_X,     
+    output [nY-1:0] BASE_Y      
 );
 
+    parameter KK = 19;
+    localparam signed [9:0] GRAVITY = 10'sd1; 
+    localparam signed [9:0] JUMP_FORCE = -10'sd10; 
+    localparam signed [9:0] GROUND_Y = 10'd109; 
 
-	parameter KK = 19;
-	// GRAVITY PARAMETERS
-	localparam signed [9:0] GRAVITY = 10'sd1; // pulls down by 1 pixel per tick
-	localparam signed [9:0] JUMP_FORCE = -10'sd10; //pushes up by 12 pixels instantly
-	localparam signed [9:0] GROUND_Y = 10'd109; // matches Y_INIT
+    reg signed [9:0] velocity_y;
 
-	reg signed [9:0] velocity_y;
-
-    // Parameters - UPDATED FOR 320x240
-    parameter nX = 9;            // Changed from 10
-    parameter nY = 8;            // Changed from 9
-    parameter XSCREEN = 320;     // Changed from 640
-    parameter YSCREEN = 240;     // Changed from 480
+    parameter nX = 9;            
+    parameter nY = 8;            
+    parameter XSCREEN = 320;     
+    parameter YSCREEN = 240;     
     parameter MODE = 0;
-    parameter STATIONARY = 0;    // New parameter: 1 = object doesn't move, 0 = normal movement
-    parameter GAMEOVER_WIDTH = 128;   // Actual gameover image width (for MODE 2)
-    parameter GAMEOVER_HEIGHT = 64;   // Actual gameover image height (for MODE 2)
+    parameter STATIONARY = 0;    
+    parameter GAMEOVER_WIDTH = 128;   
+    parameter GAMEOVER_HEIGHT = 64;   
 
     parameter xOBJ = 5;
     parameter yOBJ = 5;
@@ -787,18 +784,10 @@ module object (
     parameter HAS_SPRITE = 0;
     parameter INIT_FILE = ""; 
 
-    // UPDATED DEFAULT POSITIONS FOR 320x240
-    parameter X_INIT = 9'd0;     // Changed from 10'd0
-    parameter Y_INIT = 8'd119;   // Changed from 9'd239 (approximately halved)
-    parameter JUMP_HEIGHT = 8'd65; // Changed from 9'd80 (halved)
-    
+    parameter X_INIT = 9'd0;     
+    parameter Y_INIT = 8'd119;   
+    parameter JUMP_HEIGHT = 8'd65; 
 
-    parameter HITBOX_W = 9'd30;      // Changed from 10'd30
-    parameter HITBOX_H = 8'd30;      // Changed from 9'd30
-    parameter HITBOX_X_OFS = 9'd0;   // Changed from 10'd0
-    parameter HITBOX_Y_OFS = 8'd0;   // Changed from 9'd0
-
-    // Internal registers with updated bit widths
     reg [nX-1:0] X_reg, X_prev;
     reg [nY-1:0] Y_reg, Y_prev;
     reg prev_select;
@@ -808,29 +797,18 @@ module object (
 
     reg [3:0] draw_Q, draw_D;
     reg [1:0] Jump_Q;
-	//reg [1:0] Jump_D;
     parameter Running = 2'b00, Ascending = 2'b01, Descending = 2'b10;
 
     reg is_ducking;
     reg [25:0] duck_timer;
-	localparam DUCK_DURATION = 26'd50_000_000;
-
+    localparam DUCK_DURATION = 26'd50_000_000;
 
     wire [KK-1:0] slow; 
     wire sync_adjusted;
 
-    // Sprite logic
-    wire [14:0] sprite_addr;  // 15 bits to support up to 32K addresses
-    wire [12:0] sprite_addr_linear;  // For linear addressing (MODE 2) - 13 bits for 8192
-    
-    // For MODE 2 (gameover): Linear addressing for 128x64 stored in 8192 addresses
-    // Address = row * GAMEOVER_WIDTH + col (only valid if within bounds)
-    // Valid addresses: 0 to 8,191 (128*64-1)
-    // No padding needed - 128×64 = 8192 is already power of 2!
+    wire [14:0] sprite_addr;
+    wire [12:0] sprite_addr_linear;
     assign sprite_addr_linear = (YC * GAMEOVER_WIDTH) + XC;
-    
-    // For MODE 0/1: Standard 2D addressing {YC, XC}
-    // For MODE 2: Linear addressing
     assign sprite_addr = (MODE == 2) ? {2'b0, sprite_addr_linear} : {YC, XC};
 
     wire [8:0] pixel_data_run1, pixel_data_run2, pixel_data_run3, pixel_data_run4;
@@ -840,15 +818,13 @@ module object (
     reg [1:0] run_frame;
 
     wire [8:0] static_sprite_color; 
-
     wire [5:0] anim_threshold;
     assign anim_threshold = (speed_level > 15) ? 6'd8 : (20 - speed_level);
 
-	wire signed [10:0] current_y_signed = $signed({1'b0, Y_reg});
-	wire signed [10:0] next_y_signed = current_y_signed + velocity_y;
-	
-
-
+    wire signed [10:0] current_y_signed = $signed({1'b0, Y_reg});
+    wire signed [10:0] next_y_signed = current_y_signed + velocity_y;
+    
+    // --- SPRITE GENERATION BLOCKS ---
     generate
         if (HAS_SPRITE && MODE == 1) begin : GEN_PLAYER_SPRITES
             sprite_rom #(.MEM_INIT_FILE("running1.mif")) r1 (.clk(Clock), .addr(sprite_addr), .q(pixel_data_run1));
@@ -862,24 +838,12 @@ module object (
 
     generate
         if (HAS_SPRITE && MODE == 0) begin : GEN_OBSTACLE_SPRITE
-            object_mem #(
-                .INIT_FILE(INIT_FILE),
-                .n(9),
-                .Mn(xOBJ + yOBJ)  // Address width = xOBJ + yOBJ bits
-            ) SPRITE_ROM (
-                .clock(Clock),
-                .address(sprite_addr[xOBJ + yOBJ - 1:0]), 
-                .q(static_sprite_color)
+            object_mem #( .INIT_FILE(INIT_FILE), .n(9), .Mn(xOBJ + yOBJ) ) SPRITE_ROM (
+                .clock(Clock), .address(sprite_addr[xOBJ + yOBJ - 1:0]), .q(static_sprite_color)
             );
         end else if (HAS_SPRITE && MODE == 2) begin : GEN_GAMEOVER_SPRITE
-            object_mem #(
-                .INIT_FILE(INIT_FILE),
-                .n(9),
-                .Mn(13)  // 13-bit address for 8192 addresses (2^13 = 128*64)
-            ) GAMEOVER_ROM (
-                .clock(Clock),
-                .address(sprite_addr[12:0]),  // Use lower 13 bits for 8192 addresses
-                .q(static_sprite_color)
+            object_mem #( .INIT_FILE(INIT_FILE), .n(9), .Mn(13) ) GAMEOVER_ROM (
+                .clock(Clock), .address(sprite_addr[12:0]), .q(static_sprite_color)
             );
         end else begin
             assign static_sprite_color = 9'd0;
@@ -889,11 +853,9 @@ module object (
     reg [8:0] final_pixel_out;
 
     always @(*) begin
-        if (Jump_Q != Running) begin
-            anim_sprite_color = pixel_data_jump;
-        end else if (is_ducking) begin
-            anim_sprite_color = pixel_data_duck;
-        end else begin
+        if (Jump_Q != Running) anim_sprite_color = pixel_data_jump;
+        else if (is_ducking) anim_sprite_color = pixel_data_duck;
+        else begin
             case (run_frame)
                 2'd0: anim_sprite_color = pixel_data_run1;
                 2'd1: anim_sprite_color = pixel_data_run2;
@@ -904,14 +866,10 @@ module object (
     end
 
     always @(*) begin
-        if (!HAS_SPRITE) begin
-            final_pixel_out = new_color;
-        end else begin
-            if (MODE == 1) begin
-                final_pixel_out = anim_sprite_color;
-            end else begin  // MODE 0 or MODE 2
-                final_pixel_out = static_sprite_color;
-            end
+        if (!HAS_SPRITE) final_pixel_out = new_color;
+        else begin
+            if (MODE == 1) final_pixel_out = anim_sprite_color;
+            else final_pixel_out = static_sprite_color;
         end
     end
 
@@ -919,39 +877,35 @@ module object (
         defparam U3.n = xOBJ;
     upDn_count U4 ({yOBJ{1'd0}}, Clock, Resetn, Lyc, Eyc, 1'b1, YC);
         defparam U4.n = yOBJ;
-
     Up_count U6 (Clock, Resetn, slow);
         defparam U6.n = KK; 
 
     assign sync_adjusted = (slow == 0);
 
     wire [15:0] lfsr_out;
-    reg [nX-1:0] random_x_offset;  // Changed from [9:0] to [nX-1:0]
+    reg [nX-1:0] random_x_offset;
     lfsr_16bit RAND_GEN (Clock, Resetn, lfsr_out);
 
-	wire[7:0] random_obs_y;
-	assign random_obs_y = (lfsr_out[0] == 1'b0) ? 8'd102 : 8'd109;
-
-
-    always @(posedge Clock) begin
-        if (!Resetn) random_x_offset <= 0;
-        else if (faster && MODE == 0) begin 
-             random_x_offset <= (lfsr_out[8:0] % 9'd100);  // Changed from [9:0] and 10'd200
-        end
-    end
-
+    // --- MAIN PHYSICS & LOGIC BLOCK ---
+    // EVERYTHING that writes to Y_reg must be in here!
     always @(posedge Clock) begin
         if (!Resetn) begin
             Jump_Q <= Running;
             is_ducking <= 0;
             duck_timer <= 0;
-            Y_reg <= Y_INIT;
-            velocity_y <= 0;     // Reset velocity
+            Y_reg <= Y_INIT;    // Default Reset Position
+            velocity_y <= 0;
             anim_tick <= 0;
             run_frame <= 0;
+            random_x_offset <= 0;
         end else begin
             
-            // --- DUCK LOGIC (Kept same) ---
+            // 1. Random Offset Generation
+            if (faster && MODE == 0) begin 
+                 random_x_offset <= (lfsr_out[8:0] % 9'd100);
+            end
+
+            // 2. Ducking Logic
             if (duck_trigger && Jump_Q == Running && duck_timer == 0) begin
                 is_ducking <= 1;
                 duck_timer <= DUCK_DURATION;
@@ -964,7 +918,7 @@ module object (
                 is_ducking <= 0;
             end
 
-            // --- ANIMATION TICKS (Kept same) ---
+            // 3. Animation Logic
             if (sync_adjusted) begin
                  if (anim_tick >= anim_threshold) begin
                      anim_tick <= 0;
@@ -974,93 +928,77 @@ module object (
                  end
             end
 
-            // 1. JUMP TRIGGER (Instant Upward Force)
-
-            // We can only jump if we are currently Running (on the ground)
-            if (jump_trigger && !is_ducking && Jump_Q == Running) begin
-                velocity_y <= JUMP_FORCE;
-                Jump_Q <= Ascending; // Set state to "In Air"
-            end
+            // 4. Y POSITION LOGIC (Merged!)
             
-            // Apply Gravity & Movement
-            // Only update physics on the sync_adjusted tick to control speed
-            else if (MODE == 1 && sync_adjusted) begin
-                // If we are in the air...
-                if (Jump_Q != Running) begin
-                    
-                    // Update Velocity (Gravity pulls down)
-                    velocity_y <= velocity_y + GRAVITY;
-                    
-                    // PREDICT LANDING: Check if next move hits ground
-                    if (next_y_signed >= $signed({1'b0, GROUND_Y})) begin
-    					Y_reg <= GROUND_Y;      // Snap to ground
-						velocity_y <= 0;        // Stop falling
-						Jump_Q <= Running;      // State: Running
-					end else begin
-						Y_reg <= next_y_signed[nY-1:0]; // Move dino
-					end
-                end 
-                // Safety: Force ground height if Running
-                else begin
-                    Y_reg <= GROUND_Y;
-                    velocity_y <= 0;
+            // --- DINO LOGIC (MODE 1) ---
+            if (MODE == 1) begin
+                if (jump_trigger && !is_ducking && Jump_Q == Running) begin
+                    velocity_y <= JUMP_FORCE;
+                    Jump_Q <= Ascending;
+                end
+                else if (sync_adjusted) begin
+                    if (Jump_Q != Running) begin
+                        velocity_y <= velocity_y + GRAVITY;
+                        if (next_y_signed >= $signed({1'b0, GROUND_Y})) begin
+                            Y_reg <= GROUND_Y;
+                            velocity_y <= 0;
+                            Jump_Q <= Running;
+                        end else begin
+                            Y_reg <= next_y_signed[nY-1:0];
+                        end
+                    end 
+                    else begin
+                        Y_reg <= GROUND_Y;
+                        velocity_y <= 0;
+                    end
                 end
             end
-        end
+            
+            // --- OBSTACLE LOGIC (MODE 0) ---
+            else if (MODE == 0 && !STATIONARY) begin
+                // Check for respawn conditions
+                // Check for respawn conditions
+                if (faster) begin
+                    // Triggered by Score Counter
+                    Y_reg <= spawn_y_input; // <--- ADD THIS BACK
+                end 
+                else if (sync_adjusted && X_reg <= 1) begin
+                    // Triggered by Screen Wrap
+                    Y_reg <= spawn_y_input; // <--- ADD THIS BACK
+                end
+            end
     end
 
-
+    // --- X POSITION BLOCK ---
+    // (Separate block for X is fine because Y is handled above)
     always @(posedge Clock) begin
         if (!Resetn) X_reg <= X_INIT;
         else if (MODE == 0 && !STATIONARY) begin 
            if (faster) begin
                X_reg <= XSCREEN - BOX_SIZE_X + random_x_offset;
-
-			   Y_reg <= spawn_y_input;
            end else if (sync_adjusted) begin
-               if (X_reg <= 1) begin
-			   		X_reg <= XSCREEN - BOX_SIZE_X;
-					Y_reg <= spawn_y_input;
-			   end
+               if (X_reg <= 1) X_reg <= XSCREEN - BOX_SIZE_X + random_x_offset;
                else X_reg <= X_reg - 1'b1;
            end
         end
-        // If STATIONARY == 1 or MODE == 2, X_reg stays at X_INIT
     end
 
-    // --- IMPROVED GHOST CLEANUP LOGIC ---
+    // --- GHOST CLEANUP LOGIC ---
     reg ignore_first_tick;
-
-    // 1. Control the "Ignore" flag
     always @(posedge Clock) begin
-        if (!Resetn) begin
-            // On Reset, raise the flag: "Don't update history yet!"
-            ignore_first_tick <= 1'b1;
-        end
-        else if (sync_adjusted) begin
-            // On the first tick, this will still be 1. 
-            // We clear it so the NEXT tick works normally.
-            ignore_first_tick <= 1'b0;
-        end
+        if (!Resetn) ignore_first_tick <= 1'b1;
+        else if (sync_adjusted) ignore_first_tick <= 1'b0;
     end
 
-    // 2. Smart History Update
     always @(posedge Clock) begin
-        if (!Resetn) begin
-            // Reset held: Keep X_prev at the "Crash Site"
-            // X_reg is resetting to "Start Site" in its own block
-        end
-        else if (sync_adjusted) begin
-            // Only update X_prev if we are NOT in the first tick after reset
-            if (!ignore_first_tick) begin
-                X_prev <= X_reg;
-                Y_prev <= Y_reg;
-            end
+        if (sync_adjusted && !Resetn) begin end // Prevent update during reset
+        else if (sync_adjusted && !ignore_first_tick) begin
+            X_prev <= X_reg;
+            Y_prev <= Y_reg;
         end
     end
 
     parameter D_A=0, D_B=1, D_C=2, D_D=3, D_E=4, D_F=5, D_G=6, D_H=7, D_I=8, D_J=9, D_K=10, D_L=11;
-    reg Lx, Ly, Lxc, Lyc, Exc, Eyc, erase, write;
 
     always @(posedge Clock) begin
         if (!Resetn) draw_Q <= D_A;
@@ -1100,37 +1038,25 @@ module object (
             D_J: begin req=1; Exc=1; write=1; end
             D_K: begin req=1; Lxc=1; Eyc=1; end
             D_L: Lyc=1;
-		endcase
+        endcase
     end
     
     localparam SPRITE_Y_OFFSET = 10; 
-	localparam DUCK_Y_SHIFT = 0;
+    localparam DUCK_Y_SHIFT = 0;
 
     assign VGA_x = ((prev_select) ? X_prev : X_reg) + XC;
     assign VGA_y = ((prev_select) ? Y_prev : Y_reg) + YC 
-                 + ((MODE==1)? SPRITE_Y_OFFSET : 0)  // Only for player (MODE 1)
+                 + ((MODE==1)? SPRITE_Y_OFFSET : 0)  
                  + ((is_ducking) ? DUCK_Y_SHIFT : 0);
     
     assign VGA_color = (erase) ? 9'b111111111 : final_pixel_out;
-    // --- DYNAMIC TRANSPARENCY LOGIC ---
     
     wire [8:0] transparent_color;
-    
-    // Transparency Logic: 
-    // MODE 1 (Dino) + Ducking: transparent = BLACK (0) - for ducking sprite
-    // MODE 2 (Gameover): NO TRANSPARENCY - all pixels drawn
-    // MODE 0 (Obstacle) or MODE 1 (Dino) not ducking: transparent = WHITE (all 1s)
     assign transparent_color = (MODE == 1 && is_ducking) ? 9'd0 : 9'b111111111;
 
-    // For MODE 2, only write pixels within actual image bounds (128x64)
     wire within_gameover_bounds;
-    assign within_gameover_bounds = (MODE == 2) ? 
-                                   (XC < GAMEOVER_WIDTH && YC < GAMEOVER_HEIGHT) : 
-                                   1'b1;  // Always true for other modes
+    assign within_gameover_bounds = (MODE == 2) ? (XC < GAMEOVER_WIDTH && YC < GAMEOVER_HEIGHT) : 1'b1;  
 
-    // VGA_write logic:
-    // MODE 2: Write ALL pixels within bounds (no transparency check)
-    // Other modes: Use transparency check
     assign VGA_write = (MODE == 2) ? 
                       (write & within_gameover_bounds) :
                       (write & (erase || (final_pixel_out != transparent_color)));
@@ -1138,10 +1064,7 @@ module object (
     assign BASE_X = X_reg;
     assign BASE_Y = Y_reg;
 
-
-
 endmodule
-
 
 // 16-bit LFSR
 module lfsr_16bit(Clock, Resetn, random_out);
