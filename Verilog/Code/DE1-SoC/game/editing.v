@@ -757,7 +757,7 @@ module object (
     localparam signed [9:0] GROUND_Y = 10'd109; 
 
     // *** RE-ADDED: Define the two random spawn heights ***
-    localparam [7:0] OBSTACLE_LOW  = 8'd109; // Ground level
+    localparam [7:0] OBSTACLE_LOW  = 8'd115; // Ground level
     localparam [7:0] OBSTACLE_HIGH = 8'd102; // Flying level
 
     reg signed [9:0] velocity_y;
