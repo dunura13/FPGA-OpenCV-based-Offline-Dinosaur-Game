@@ -770,6 +770,7 @@ endmodule
 // Universal object module - UPDATED WITH PROGRESSIVE SPEED CONTROL
 // Universal object module - UPDATED WITH PROGRESSIVE SPEED CONTROL
 // Universal object module - UPDATED WITH PROGRESSIVE SPEED CONTROL
+// Universal object module - UPDATED WITH PROGRESSIVE SPEED CONTROL
 module object (
     input Resetn, Clock, gnt, sel, 
     input jump_trigger, duck_trigger,
