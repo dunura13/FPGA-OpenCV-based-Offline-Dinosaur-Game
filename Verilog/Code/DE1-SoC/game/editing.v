@@ -55,6 +55,8 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	wire duck_combined;
 	assign duck_combined = duck_pulse | duck_trigger_key;
 
+
+
 	// --UART recieve + decode ---
 	wire tick_16x;
 	baud16x #(.CLK_HZ(50_000_000), .BAUD(115200)) U_BAUD16X (
@@ -649,7 +651,7 @@ module object (
 				is_ducking <= 0;
 			
 			end
-			
+
 
             if (MODE == 1 && sync_adjusted) begin
                 case (Jump_Q)
