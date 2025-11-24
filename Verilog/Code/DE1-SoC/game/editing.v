@@ -770,7 +770,7 @@ module object (
             D_J: begin req=1; Exc=1; write=1; end
             D_K: begin req=1; Lxc=1; Eyc=1; end
             D_L: Lyc=1;
-        endcase
+		endcase
     end
     
     localparam SPRITE_Y_OFFSET = 10; 
@@ -782,7 +782,17 @@ module object (
                  + ((is_ducking) ? DUCK_Y_SHIFT : 0);
     
     assign VGA_color = (erase) ? 9'b111111111 : final_pixel_out;
-    assign VGA_write = write & (erase || (final_pixel_out != 9'b111111111));
+    a// --- DYNAMIC TRANSPARENCY LOGIC ---
+    
+    wire [8:0] transparent_color;
+    
+    // Logic: If we are the Player (MODE 1) AND we are Ducking, 
+    // set the invisible color to BLACK (0).
+    // Otherwise, set the invisible color to WHITE (All 1s).
+    assign transparent_color = (MODE == 1 && is_ducking) ? 9'd0 : 9'b111111111;
+
+    // Use this dynamic color for the check
+    assign VGA_write = write & (erase || (final_pixel_out != transparent_color));
 
     assign BASE_X = X_reg;
     assign BASE_Y = Y_reg;
