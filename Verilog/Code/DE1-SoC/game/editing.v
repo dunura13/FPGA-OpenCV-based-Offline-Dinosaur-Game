@@ -91,7 +91,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	assign LEDR[2] = jump_pulse;
 	assign LEDR[3] = duck_pulse;
 	assign LEDR[4] = idle_pulse;
-	assign LEDR[9] = Resetn;
+
 
 	uart_rx_16x #(.CLK_HZ(50_000_000), .BAUD(115200)) U_RX (
 		.clk (CLOCK_50),
