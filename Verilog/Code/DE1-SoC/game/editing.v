@@ -475,6 +475,15 @@ module object (
     output [nY-1:0] BASE_Y      // Changed to use nY
 );
 
+
+	parameter KK = 19;
+	// GRAVITY PARAMETERS
+	localparam signed [9:0] GRAVITY = 10'sd1; // pulls down by 1 pixel per tick
+	localparam signed [9:0] JUMP_FORCE = -10'sd12; //pushes up by 12 pixels instantly
+	localparam signed [9:0] GROUND_Y = 10'd119; // matches Y_INIT
+
+	reg signed [9:0] velocity_y;
+
     // Parameters - UPDATED FOR 320x240
     parameter nX = 9;            // Changed from 10
     parameter nY = 8;            // Changed from 9
@@ -494,7 +503,6 @@ module object (
     parameter Y_INIT = 8'd119;   // Changed from 9'd239 (approximately halved)
     parameter JUMP_HEIGHT = 8'd65; // Changed from 9'd80 (halved)
     
-    parameter KK = 19; 
 
     parameter HITBOX_W = 9'd30;      // Changed from 10'd30
     parameter HITBOX_H = 8'd30;      // Changed from 9'd30
@@ -510,7 +518,8 @@ module object (
     wire [yOBJ-1:0] YC;
 
     reg [3:0] draw_Q, draw_D;
-    reg [1:0] Jump_Q, Jump_D;
+    reg [1:0] Jump_Q;
+	//reg [1:0] Jump_D;
     parameter Running = 2'b00, Ascending = 2'b01, Descending = 2'b10;
 
     reg is_ducking;
@@ -536,6 +545,9 @@ module object (
     wire [5:0] anim_threshold;
     assign anim_threshold = (speed_level > 15) ? 6'd8 : (20 - speed_level);
 
+	wire signed [10:0] current_y_signed = $signed({1'b0, Y_reg});
+	wire signed [10:0] next_y_signed = current_y_signed + velocity_y;
+	
     always @(posedge Clock) begin
         if (!Resetn) begin
             anim_tick <= 0;
@@ -633,48 +645,69 @@ module object (
             is_ducking <= 0;
             duck_timer <= 0;
             Y_reg <= Y_INIT;
+            velocity_y <= 0;     // Reset velocity
+            anim_tick <= 0;
+            run_frame <= 0;
         end else begin
-            Jump_Q <= Jump_D;
-
-
             
+            // --- DUCK LOGIC (Kept same) ---
             if (duck_trigger && Jump_Q == Running && duck_timer == 0) begin
                 is_ducking <= 1;
                 duck_timer <= DUCK_DURATION;
             end else if (duck_timer > 0) begin
                 duck_timer <= duck_timer - 1;
-				is_ducking <= 1; 
+                is_ducking <= 1; 
+                run_frame <= 0;
+                anim_tick <= 0;
+            end else begin
+                is_ducking <= 0;
             end
 
-			// timer then expires
-			else begin
-				is_ducking <= 0;
-			
-			end
+            // --- ANIMATION TICKS (Kept same) ---
+            if (sync_adjusted) begin
+                 if (anim_tick >= anim_threshold) begin
+                     anim_tick <= 0;
+                     run_frame <= run_frame + 1;
+                 end else begin
+                     anim_tick <= anim_tick + 1;
+                 end
+            end
 
+            // 1. JUMP TRIGGER (Instant Upward Force)
 
-            if (MODE == 1 && sync_adjusted) begin
-                case (Jump_Q)
-                    Running:    Y_reg <= Y_INIT;
-                    Ascending:  Y_reg <= Y_reg - 1'b1; 
-                    Descending: Y_reg <= Y_reg + 1'b1; 
-                    default:    Y_reg <= Y_reg;
-                endcase
+            // We can only jump if we are currently Running (on the ground)
+            if (jump_trigger && !is_ducking && Jump_Q == Running) begin
+                velocity_y <= JUMP_FORCE;
+                Jump_Q <= Ascending; // Set state to "In Air"
+            end
+            
+            // Apply Gravity & Movement
+            // Only update physics on the sync_adjusted tick to control speed
+            else if (MODE == 1 && sync_adjusted) begin
+                // If we are in the air...
+                if (Jump_Q != Running) begin
+                    
+                    // Update Velocity (Gravity pulls down)
+                    velocity_y <= velocity_y + GRAVITY;
+                    
+                    // PREDICT LANDING: Check if next move hits ground
+                    if (next_y_signed >= $signed({1'b0, GROUND_Y})) begin
+    					Y_reg <= GROUND_Y;      // Snap to ground
+						velocity_y <= 0;        // Stop falling
+						Jump_Q <= Running;      // State: Running
+					end else begin
+						Y_reg <= next_y_signed[nY-1:0]; // Move dino
+					end
+                end 
+                // Safety: Force ground height if Running
+                else begin
+                    Y_reg <= GROUND_Y;
+                    velocity_y <= 0;
+                end
             end
         end
     end
 
-    always @(*) begin
-        Jump_D = Jump_Q;
-        if (MODE == 1) begin
-            case (Jump_Q)
-                Running:    if (jump_trigger && !is_ducking) Jump_D = Ascending;
-                Ascending:  if (Y_reg <= Y_INIT - JUMP_HEIGHT) Jump_D = Descending;
-                Descending: if (Y_reg >= Y_INIT) Jump_D = Running;
-                default:    Jump_D = Running;
-            endcase
-        end
-    end
 
     always @(posedge Clock) begin
         if (!Resetn) X_reg <= X_INIT;
@@ -740,9 +773,12 @@ module object (
     end
     
     localparam SPRITE_Y_OFFSET = 10; 
+	localparam DUCK_Y_SHIFT = 8;
 
     assign VGA_x = ((prev_select) ? X_prev : X_reg) + XC;
-    assign VGA_y = ((prev_select) ? Y_prev : Y_reg) + YC + ((MODE==1)? SPRITE_Y_OFFSET : 0);
+    assign VGA_y = ((prev_select) ? Y_prev : Y_reg) + YC 
+                 + ((MODE==1)? SPRITE_Y_OFFSET : 0)
+                 + ((is_ducking) ? DUCK_Y_SHIFT : 0);
     
     assign VGA_color = (erase) ? 9'b111111111 : final_pixel_out;
     assign VGA_write = write & (erase || (final_pixel_out != 9'd0));
