@@ -95,6 +95,11 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	wire [7:0] speed_level;
 	wire duck_trigger_key;
 
+	// *** NEW: Game started flag ***
+	reg game_started;
+	wire game_active;
+	assign game_active = game_started && !collision_latched;
+
 	assign Resetn = KEY[0];
 	sync S1 (~KEY[1], Resetn, CLOCK_50, jump_trigger_key);
 	sync S2(~KEY[2], Resetn, CLOCK_50, duck_trigger_key);
@@ -141,9 +146,20 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 
 	assign jump_trigger = jump_trigger_key | jump_pulse;
 
+	// *** NEW: Game start logic - start on first jump ***
+	always @(posedge CLOCK_50) begin
+		if (!Resetn) begin
+			game_started <= 1'b0;
+		end else if (jump_trigger && !game_started) begin
+			game_started <= 1'b1;
+		end else if (collision_latched) begin
+			game_started <= 1'b0;  // Reset on collision for next game
+		end
+	end
+
 	// *** NEW: Enable signal for gameover objects ***
-	wire gameover_reset;
-	assign gameover_reset = Resetn && collision_latched;
+	wire gameover_enable;
+	assign gameover_enable = collision_latched;
 
 	// Determine which gameover image to show based on score
 	wire show_gameover1, show_gameover2, show_gameover3, show_gameover4;
@@ -156,12 +172,12 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	always @ (*)
 	case (y_Q)
 		A: if (req_clear) Y_D = H;  // *** NEW: Clearing has highest priority ***
-		   else if (req_dino) Y_D = B;
-		   else if (req_obstacle) Y_D = C;
-		   else if (show_gameover1 && req_gameover1) Y_D = D;
+		   else if (show_gameover1 && req_gameover1) Y_D = D;  // *** CHANGED: Gameover has priority over game objects ***
 		   else if (show_gameover2 && req_gameover2) Y_D = E;
 		   else if (show_gameover3 && req_gameover3) Y_D = F;
 		   else if (show_gameover4 && req_gameover4) Y_D = G;
+		   else if (req_dino) Y_D = B;
+		   else if (req_obstacle) Y_D = C;
 		   else Y_D = A;
 		B: if (req_dino) Y_D = B;
 		   else Y_D = A;
@@ -274,7 +290,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 
 	// Instantiate dinosaur (player) - MODE 1 (Jumper) - SCALED POSITIONS
 	object DINO (
-		.Resetn(Resetn && !collision_latched),
+		.Resetn(Resetn),
 		.Clock(CLOCK_50),
 		.gnt(gnt_dino),
 		.sel(1'b1),
@@ -283,7 +299,8 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 		.new_color(9'b000111000),
 		.faster(1'b0),
 		.slower(1'b0),
-		.speed_level(speed_level),    
+		.speed_level(speed_level),
+		.game_active(game_active),
 		.req(req_dino),
 		.VGA_x(dino_x),
 		.VGA_y(dino_y),
@@ -307,7 +324,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 
 	// Instantiate obstacle - MODE 0 (Obstacle) - SCALED POSITIONS
 	object OBS (
-		.Resetn(Resetn && !collision_latched),
+		.Resetn(Resetn),
 		.Clock(CLOCK_50),
 		.gnt(gnt_obstacle),
 		.sel(1'b0),
@@ -316,7 +333,8 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 		.new_color(9'b111000000),
 		.faster(respawn_obstacle),
 		.slower(1'b0),
-        .speed_level(speed_level),   
+        .speed_level(speed_level),
+		.game_active(game_active),
 		.req(req_obstacle),
 		.VGA_x(obstacle_x),
 		.VGA_y(obstacle_y),
@@ -344,7 +362,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	
 	// Game Over 1: Score < 10
 	object GAMEOVER1 (
-		.Resetn(gameover_reset),  // *** CHANGED: Uses gameover_reset ***
+		.Resetn(Resetn),
 		.Clock(CLOCK_50),
 		.gnt(gnt_gameover1),
 		.sel(1'b0),
@@ -354,6 +372,8 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 		.faster(1'b0),
 		.slower(1'b0),
 		.speed_level(8'd0),
+		.game_active(1'b0),
+		.gameover_enable(gameover_enable),
 		.req(req_gameover1),
 		.VGA_x(gameover1_x),
 		.VGA_y(gameover1_y),
@@ -380,7 +400,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 
 	// Game Over 2: Score 10-14
 	object GAMEOVER2 (
-		.Resetn(gameover_reset),  // *** CHANGED: Uses gameover_reset ***
+		.Resetn(Resetn),
 		.Clock(CLOCK_50),
 		.gnt(gnt_gameover2),
 		.sel(1'b0),
@@ -390,6 +410,8 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 		.faster(1'b0),
 		.slower(1'b0),
 		.speed_level(8'd0),
+		.game_active(1'b0),
+		.gameover_enable(gameover_enable),
 		.req(req_gameover2),
 		.VGA_x(gameover2_x),
 		.VGA_y(gameover2_y),
@@ -403,20 +425,20 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	defparam GAMEOVER2.XSCREEN = 320;
 	defparam GAMEOVER2.YSCREEN = 240;
 	defparam GAMEOVER2.MODE = 2;
-	defparam GAMEOVER2.xOBJ = 7;  // *** CHANGED to 7 ***
-	defparam GAMEOVER2.yOBJ = 6;  // *** CHANGED to 6 ***
-	defparam GAMEOVER2.GAMEOVER_WIDTH = 128;  // *** CHANGED to 128 ***
-	defparam GAMEOVER2.GAMEOVER_HEIGHT = 64;  // *** CHANGED to 64 ***
+	defparam GAMEOVER2.xOBJ = 7;
+	defparam GAMEOVER2.yOBJ = 6;
+	defparam GAMEOVER2.GAMEOVER_WIDTH = 128;
+	defparam GAMEOVER2.GAMEOVER_HEIGHT = 64;
 	defparam GAMEOVER2.HAS_SPRITE = 1;
 	defparam GAMEOVER2.STATIONARY = 1;
 	defparam GAMEOVER2.INIT_FILE = "./MIF/gameover2.mif";
-	defparam GAMEOVER2.X_INIT = 9'd96;  // *** CHANGED to 96 (centered) ***
-	defparam GAMEOVER2.Y_INIT = 8'd88;  // *** CHANGED to 88 (centered) ***
+	defparam GAMEOVER2.X_INIT = 9'd96;
+	defparam GAMEOVER2.Y_INIT = 8'd88;
 	defparam GAMEOVER2.KK = 19;
 
 	// Game Over 3: Score 15-19
 	object GAMEOVER3 (
-		.Resetn(gameover_reset),  // *** CHANGED: Uses gameover_reset ***
+		.Resetn(Resetn),
 		.Clock(CLOCK_50),
 		.gnt(gnt_gameover3),
 		.sel(1'b0),
@@ -426,6 +448,8 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 		.faster(1'b0),
 		.slower(1'b0),
 		.speed_level(8'd0),
+		.game_active(1'b0),
+		.gameover_enable(gameover_enable),
 		.req(req_gameover3),
 		.VGA_x(gameover3_x),
 		.VGA_y(gameover3_y),
@@ -439,20 +463,20 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	defparam GAMEOVER3.XSCREEN = 320;
 	defparam GAMEOVER3.YSCREEN = 240;
 	defparam GAMEOVER3.MODE = 2;
-	defparam GAMEOVER3.xOBJ = 7;  // *** CHANGED to 7 ***
-	defparam GAMEOVER3.yOBJ = 6;  // *** CHANGED to 6 ***
-	defparam GAMEOVER3.GAMEOVER_WIDTH = 128;  // *** CHANGED to 128 ***
-	defparam GAMEOVER3.GAMEOVER_HEIGHT = 64;  // *** CHANGED to 64 ***
+	defparam GAMEOVER3.xOBJ = 7;
+	defparam GAMEOVER3.yOBJ = 6;
+	defparam GAMEOVER3.GAMEOVER_WIDTH = 128;
+	defparam GAMEOVER3.GAMEOVER_HEIGHT = 64;
 	defparam GAMEOVER3.HAS_SPRITE = 1;
 	defparam GAMEOVER3.STATIONARY = 1;
 	defparam GAMEOVER3.INIT_FILE = "./MIF/gameover3.mif";
-	defparam GAMEOVER3.X_INIT = 9'd96;  // *** CHANGED to 96 (centered) ***
-	defparam GAMEOVER3.Y_INIT = 8'd88;  // *** CHANGED to 88 (centered) ***
+	defparam GAMEOVER3.X_INIT = 9'd96;
+	defparam GAMEOVER3.Y_INIT = 8'd88;
 	defparam GAMEOVER3.KK = 19;
 
 	// Game Over 4: Score >= 20
 	object GAMEOVER4 (
-		.Resetn(gameover_reset),  // *** CHANGED: Uses gameover_reset ***
+		.Resetn(Resetn),
 		.Clock(CLOCK_50),
 		.gnt(gnt_gameover4),
 		.sel(1'b0),
@@ -462,6 +486,8 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 		.faster(1'b0),
 		.slower(1'b0),
 		.speed_level(8'd0),
+		.game_active(1'b0),
+		.gameover_enable(gameover_enable),
 		.req(req_gameover4),
 		.VGA_x(gameover4_x),
 		.VGA_y(gameover4_y),
@@ -475,15 +501,15 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	defparam GAMEOVER4.XSCREEN = 320;
 	defparam GAMEOVER4.YSCREEN = 240;
 	defparam GAMEOVER4.MODE = 2;
-	defparam GAMEOVER4.xOBJ = 7;  // *** CHANGED to 7 ***
-	defparam GAMEOVER4.yOBJ = 6;  // *** CHANGED to 6 ***
-	defparam GAMEOVER4.GAMEOVER_WIDTH = 128;  // *** CHANGED to 128 ***
-	defparam GAMEOVER4.GAMEOVER_HEIGHT = 64;  // *** CHANGED to 64 ***
+	defparam GAMEOVER4.xOBJ = 7;
+	defparam GAMEOVER4.yOBJ = 6;
+	defparam GAMEOVER4.GAMEOVER_WIDTH = 128;
+	defparam GAMEOVER4.GAMEOVER_HEIGHT = 64;
 	defparam GAMEOVER4.HAS_SPRITE = 1;
 	defparam GAMEOVER4.STATIONARY = 1;
 	defparam GAMEOVER4.INIT_FILE = "./MIF/gameover4.mif";
-	defparam GAMEOVER4.X_INIT = 9'd96;  // *** CHANGED to 96 (centered) ***
-	defparam GAMEOVER4.Y_INIT = 8'd88;  // *** CHANGED to 88 (centered) ***
+	defparam GAMEOVER4.X_INIT = 9'd96;
+	defparam GAMEOVER4.Y_INIT = 8'd88;
 	defparam GAMEOVER4.KK = 19;
 
 	// VGA controller with dynamic background
@@ -549,7 +575,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
         (d_left <= o_right) &&
         (d_bottom >= o_top) &&
         (d_top <= o_bottom)
-    );
+    ) && game_active;  // *** CHANGED: Only detect collision when game is active ***
 
 	collision_latch COL_LATCH (
 		.Clock(CLOCK_50),
@@ -566,6 +592,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 		.obstacle_x(obstacle_x),
 		.collision(collision),
 		.collision_latched(collision_latched),
+		.game_active(game_active),
 		.score(score),
 		.high_score(high_score),
 		.respawn_obstacle(respawn_obstacle),
@@ -592,6 +619,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	hex_display H5(high_hundreds, HEX5);
 
 	assign LEDR[0] = collision_latched;
+	assign LEDR[5] = game_started;
 
 endmodule
 
@@ -611,12 +639,13 @@ endmodule
 
 // Enhanced Score Counter Module - UPDATED FOR 320x240
 module score_counter(Clock, Resetn, dino_x, obstacle_x, collision,
-	collision_latched, score, high_score, respawn_obstacle, speed_level);
+	collision_latched, game_active, score, high_score, respawn_obstacle, speed_level);
 	parameter nX = 9;
 
 	input Clock, Resetn;
 	input [nX-1:0] dino_x, obstacle_x;
 	input collision, collision_latched;
+	input game_active;
 	output reg [15:0] score;
 	output reg [15:0] high_score;
 	output reg respawn_obstacle;
@@ -660,7 +689,7 @@ module score_counter(Clock, Resetn, dino_x, obstacle_x, collision,
 				speed_level <= 8'd0;
 			end
 
-			if (!collision_latched) begin
+			if (game_active && !collision_latched) begin
 				if (prev_obstacle_x > dino_x && obstacle_x <= dino_x && !score_given) begin
 					if (!collision && !prev_collision) begin
 						score <= score + 16'd1;
@@ -764,13 +793,15 @@ module Up_count (Clock, Resetn, Q);
 			Q <= Q + 1'b1;
 endmodule
 
-// Universal object module - UPDATED FOR 320x240 WITH RANDOM Y POSITION (FIXED)
+// Universal object module - UPDATED WITH GAME START AND GAMEOVER CONTROL
 module object (
     input Resetn, Clock, gnt, sel, 
     input jump_trigger, duck_trigger,
     input faster, slower,
     input [8:0] new_color,
     input [7:0] speed_level,
+    input game_active,
+    input gameover_enable,
 
     output reg req,
     output [nX-1:0] VGA_x,
@@ -814,8 +845,9 @@ module object (
     parameter HITBOX_X_OFS = 9'd0;
     parameter HITBOX_Y_OFS = 8'd0;
 
-    // *** NEW: Flag to track if MODE 2 has completed drawing ***
-    reg draw_complete_mode2;
+    // *** NEW: Gameover drawing state ***
+    reg gameover_drawn;
+    reg prev_gameover_enable;
 
     reg [nX-1:0] X_reg, X_prev;
     reg [nY-1:0] Y_reg, Y_prev;
@@ -839,8 +871,6 @@ module object (
     wire [12:0] sprite_addr_linear;
     
     // For MODE 2 (gameover): Linear addressing for 128x64 stored in 8192 addresses
-    // Address = row * GAMEOVER_WIDTH + col
-    // For 128x64 images: addr = YC * 128 + XC (max = 63*128+127 = 8191)
     assign sprite_addr_linear = (YC * GAMEOVER_WIDTH) + XC;
     
     // For MODE 0/1: Standard 2D addressing {YC, XC}
@@ -935,44 +965,48 @@ module object (
     Up_count U6 (Clock, Resetn, slow);
         defparam U6.n = KK; 
 
-    assign sync_adjusted = (slow == 0);
+    // *** CHANGED: sync_adjusted respects game_active for gameplay objects ***
+    assign sync_adjusted = (MODE == 2) ? (slow == 0) : (slow == 0 && game_active);
 
     wire [15:0] lfsr_out;
     reg [nX-1:0] random_x_offset;
-    reg [nY-1:0] random_y_position;  // *** NEW: Random Y position register ***
+    reg [nY-1:0] random_y_position;
     lfsr_16bit RAND_GEN (Clock, Resetn, lfsr_out);
 
-    // *** MODIFIED: Enhanced LFSR block with random Y position ***
+    // *** MODIFIED: LFSR runs continuously, samples taken when needed ***
     always @(posedge Clock) begin
         if (!Resetn) begin
             random_x_offset <= 0;
-            random_y_position <= Y_INIT;  // Initialize to default Y position
+            random_y_position <= Y_INIT;
         end
         else if (faster && MODE == 0) begin 
-            // Random X offset (existing functionality)
             random_x_offset <= (lfsr_out[8:0] % 9'd100);
-            
-            // *** NEW: Random Y position - use bit 10 from LFSR to choose between two heights ***
             random_y_position <= lfsr_out[10] ? 8'd122 : 8'd102;
         end
     end
 
-    // *** MODIFIED: Y_reg initialization - only for MODE 1 and MODE 2 ***
+    // *** MODIFIED: Jump/animation logic ***
     always @(posedge Clock) begin
         if (!Resetn) begin
             Jump_Q <= Running;
             is_ducking <= 0;
             duck_timer <= 0;
-            // Only initialize Y_reg for MODE 1 and MODE 2 here
-            // MODE 0 (obstacles) will be initialized in the X/Y position block
             if (MODE != 0) Y_reg <= Y_INIT;
             velocity_y <= 0;
             anim_tick <= 0;
             run_frame <= 0;
-            draw_complete_mode2 <= 0;
+            gameover_drawn <= 0;
+            prev_gameover_enable <= 0;
         end else begin
             
-            if (duck_trigger && Jump_Q == Running && duck_timer == 0) begin
+            prev_gameover_enable <= gameover_enable;
+            
+            // *** NEW: Reset gameover_drawn when enable goes low ***
+            if (MODE == 2 && !gameover_enable && prev_gameover_enable) begin
+                gameover_drawn <= 0;
+            end
+            
+            if (duck_trigger && Jump_Q == Running && duck_timer == 0 && game_active) begin
                 is_ducking <= 1;
                 duck_timer <= DUCK_DURATION;
             end else if (duck_timer > 0) begin
@@ -984,7 +1018,7 @@ module object (
                 is_ducking <= 0;
             end
 
-            if (sync_adjusted) begin
+            if (sync_adjusted && MODE == 1) begin
                  if (anim_tick >= anim_threshold) begin
                      anim_tick <= 0;
                      run_frame <= run_frame + 1;
@@ -993,7 +1027,7 @@ module object (
                  end
             end
 
-            if (jump_trigger && !is_ducking && Jump_Q == Running) begin
+            if (jump_trigger && !is_ducking && Jump_Q == Running && game_active) begin
                 velocity_y <= JUMP_FORCE;
                 Jump_Q <= Ascending;
             end
@@ -1016,25 +1050,22 @@ module object (
                 end
             end
 
-            // *** NEW: Set flag when MODE 2 completes drawing ***
+            // *** NEW: Track when MODE 2 completes drawing ***
             if (MODE == 2 && draw_Q == D_L) begin
-                draw_complete_mode2 <= 1'b1;
+                gameover_drawn <= 1'b1;
             end
         end
     end
 
-    // *** MODIFIED: X and Y position management - now handles Y_reg for MODE 0 ***
+    // *** MODIFIED: X and Y position management ***
     always @(posedge Clock) begin
         if (!Resetn) begin
             X_reg <= X_INIT;
-            // *** CHANGED: Initialize Y position for obstacles (MODE 0) here ***
             if (MODE == 0) Y_reg <= Y_INIT;
         end
         else if (MODE == 0 && !STATIONARY) begin 
            if (faster) begin
-               // Reset X position with random offset
                X_reg <= XSCREEN - BOX_SIZE_X + random_x_offset;
-               // *** NEW: Also reset Y position to random height ***
                Y_reg <= random_y_position;
            end else if (sync_adjusted) begin
                if (X_reg <= 1) X_reg <= XSCREEN - BOX_SIZE_X;
@@ -1057,7 +1088,8 @@ module object (
 
     always @(posedge Clock) begin
         if (!Resetn) begin
-            // Keep X_prev at crash site during reset
+            X_prev <= X_INIT;
+            Y_prev <= Y_INIT;
         end
         else if (sync_adjusted) begin
             if (!ignore_first_tick) begin
@@ -1075,7 +1107,7 @@ module object (
         else draw_Q <= draw_D;
     end
 
-    // *** MODIFIED: Added D_IDLE state for MODE 2 after drawing completes ***
+    // *** MODIFIED: Drawing state machine with gameover control ***
     always @(*) case (draw_Q)
         D_A: draw_D = D_B;
         D_B: if (XC != BOX_SIZE_X-1) draw_D = D_B; else draw_D = D_C;
@@ -1089,15 +1121,18 @@ module object (
         D_J: if (XC != BOX_SIZE_X-1) draw_D = D_J; else draw_D = D_K;
         D_K: if (YC != BOX_SIZE_Y-1) draw_D = D_J; else draw_D = D_L;
         D_L: begin
-            // *** MODIFIED: For MODE 2, go to idle state after drawing once ***
             if (MODE == 2) draw_D = D_IDLE;
             else draw_D = D_D;
         end
-        D_IDLE: draw_D = D_IDLE;  // *** NEW: Stay idle forever ***
+        D_IDLE: begin
+            // *** NEW: Restart if gameover_enable is triggered again ***
+            if (MODE == 2 && gameover_enable && !gameover_drawn) draw_D = D_A;
+            else draw_D = D_IDLE;
+        end
         default: draw_D = D_A;
     endcase
 
-    // *** MODIFIED: Don't request when in D_IDLE ***
+    // *** MODIFIED: Request logic includes gameover enable check ***
     always @(*) begin
         Lx = 0; Ly = 0; Lxc = 0; Lyc = 0; Exc = 0; Eyc = 0;
         erase = 0; write = 0; req = 0; prev_select = 0;
@@ -1107,15 +1142,45 @@ module object (
             D_B: begin Exc=1; write=1; end
             D_C: begin Lxc=1; Eyc=1; end
             D_D: Lyc=1;
-            D_E: req=1;
-            D_F: begin req=1; Exc=1; erase=1; write=1; prev_select=1; end
-            D_G: begin req=1; Lxc=1; Eyc=1; prev_select=1; end
-            D_H: begin req=1; Lyc=1; end
-            D_I: begin req=1; end
-            D_J: begin req=1; Exc=1; write=1; end
-            D_K: begin req=1; Lxc=1; Eyc=1; end
+            D_E: begin
+                // *** CHANGED: MODE 2 only requests when enabled ***
+                if (MODE == 2) req = gameover_enable;
+                else req = 1;
+            end
+            D_F: begin 
+                if (MODE == 2) req = gameover_enable;
+                else req = 1;
+                Exc=1; erase=1; write=1; prev_select=1; 
+            end
+            D_G: begin 
+                if (MODE == 2) req = gameover_enable;
+                else req = 1;
+                Lxc=1; Eyc=1; prev_select=1; 
+            end
+            D_H: begin 
+                if (MODE == 2) req = gameover_enable;
+                else req = 1;
+                Lyc=1; 
+            end
+            D_I: begin
+                if (MODE == 2) req = gameover_enable;
+                else req = 1;
+            end
+            D_J: begin 
+                if (MODE == 2) req = gameover_enable;
+                else req = 1;
+                Exc=1; write=1; 
+            end
+            D_K: begin 
+                if (MODE == 2) req = gameover_enable;
+                else req = 1;
+                Lxc=1; Eyc=1; 
+            end
             D_L: Lyc=1;
-            D_IDLE: ; // *** NEW: No signals in idle state ***
+            D_IDLE: begin
+                // *** NEW: Request again if enabled and not drawn ***
+                if (MODE == 2 && gameover_enable && !gameover_drawn) req = 1;
+            end
         endcase
     end
     
@@ -1146,7 +1211,7 @@ module object (
 
 endmodule
 
-// 16-bit LFSR
+// 16-bit LFSR - RUNS CONTINUOUSLY
 module lfsr_16bit(Clock, Resetn, random_out);
 	input Clock, Resetn;
 	output reg [15:0] random_out;
@@ -1156,9 +1221,9 @@ module lfsr_16bit(Clock, Resetn, random_out);
 
 	always @(posedge Clock) begin
 		if (!Resetn)
-			random_out <= 16'hACE1;
+			random_out <= 16'hACE1;  // Initial seed
 		else
-			random_out <= {random_out[14:0], feedback};
+			random_out <= {random_out[14:0], feedback};  // Always running
 	end
 endmodule
 
