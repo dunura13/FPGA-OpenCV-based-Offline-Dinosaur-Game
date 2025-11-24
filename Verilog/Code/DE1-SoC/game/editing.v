@@ -174,7 +174,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	defparam DINO.X_INIT = 9'd52;    // Changed from 10'd104 (halved)
 	defparam DINO.Y_INIT = 8'd109;   // Changed from 9'd258 (halved)
 	defparam DINO.JUMP_HEIGHT = 8'd60; // Changed from 9'd80 (halved)
-	defparam DINO.KK = 19;
+	defparam DINO.KK = 20;
 
 	// Instantiate obstacle - MODE 0 (Obstacle) - SCALED POSITIONS
 	object OBS (
@@ -479,8 +479,8 @@ module object (
 	parameter KK = 19;
 	// GRAVITY PARAMETERS
 	localparam signed [9:0] GRAVITY = 10'sd1; // pulls down by 1 pixel per tick
-	localparam signed [9:0] JUMP_FORCE = -10'sd12; //pushes up by 12 pixels instantly
-	localparam signed [9:0] GROUND_Y = 10'd119; // matches Y_INIT
+	localparam signed [9:0] JUMP_FORCE = -10'sd10; //pushes up by 12 pixels instantly
+	localparam signed [9:0] GROUND_Y = 10'd109; // matches Y_INIT
 
 	reg signed [9:0] velocity_y;
 
