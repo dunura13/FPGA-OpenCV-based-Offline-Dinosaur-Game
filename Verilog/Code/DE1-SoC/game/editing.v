@@ -37,7 +37,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
 	reg [8:0] MUX_color;
 	reg MUX_write;
 	wire req_dino, req_obstacle;
-	reg gnt_dino, gnt_obstacle;
+	reg gnt_dino, gnt_obstacle, gnt_go;
 	reg [1:0] y_Q, Y_D;
 
 	wire Resetn, jump_trigger_key, jump_trigger;
@@ -274,7 +274,7 @@ module vga_demo(CLOCK_50, SW, KEY, LEDR, VGA_R, VGA_G, VGA_B,
     defparam GAMEOVER.xOBJ = 7;      // 2^7 = 128 pixels wide
     defparam GAMEOVER.yOBJ = 6;      // 2^6 = 64 pixels tall
     defparam GAMEOVER.HAS_SPRITE = 1;
-    defparam GAMEOVER.INIT_FILE = "./MIF/game_over.mif"; // YOUR FILE NAME HERE
+    defparam GAMEOVER.INIT_FILE = "./MIF/gameover1.mif"; // YOUR FILE NAME HERE
     // Centering: (320-128)/2 = 96, (240-64)/2 = 88
     defparam GAMEOVER.X_INIT = 9'd96;    
     defparam GAMEOVER.Y_INIT = 8'd88;    
