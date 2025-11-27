@@ -41,7 +41,7 @@ FPGA (Game Logic): Receives commands, updates game state, and drives the VGA dis
 Hardware
 FPGA Board: DE1-SoC (Cyclone V) or similar.
 
-Display: VGA Monitor (640x480 resolution).
+Display: VGA Monitor (320x240 resolution).
 
 Communication: USB-to-TTL Serial Adapter (FTDI FT232RL / SH-U09C).
 
